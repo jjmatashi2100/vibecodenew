@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+body { @apply bg-gray-900 text-white; }
+.bg-gray-850 { background-color: #1f2937; }
+.bg-gray-650 { background-color: #3b4252; }
