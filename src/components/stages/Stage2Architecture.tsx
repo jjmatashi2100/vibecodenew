@@ -14,7 +14,13 @@ export function Stage2Architecture() {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [evalResult, setEvalResult] = useState<any|null>(null);
   
-  const { saveStageData, getContextForStage, workflowPrev, acceptStage } = useProjectStore();
+  const {
+    saveStageData,
+    getContextForStage,
+    workflowPrev,
+    acceptStage,
+    currentProject,
+  } = useProjectStore();
   const { llm } = useAppStore();
   
   /* --------------------------------------------------
@@ -31,6 +37,50 @@ export function Stage2Architecture() {
     } catch {/* ignore */}
     return null;
   }
+
+  /* ------------------------------------------------------------------
+     Hydrate constraints / output from autosave on mount or project change
+  -------------------------------------------------------------------*/
+  React.useEffect(() => {
+    const auto = currentProject?.settings?.autosave?.stage2;
+    if (auto) {
+      if (auto.constraints && !constraints) setConstraints(auto.constraints);
+      if (auto.output && !output) setOutput(auto.output);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProject?.id]);
+
+  /* ------------------------------------------------------------------
+     Autosave every 10 s whenever constraints/output change
+  -------------------------------------------------------------------*/
+  React.useEffect(() => {
+    if (!currentProject?.id) return;
+    if (!constraints.trim() && !output.trim()) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const existing = currentProject.settings || {};
+        const newSettings = {
+          ...existing,
+          autosave: {
+            ...(existing.autosave || {}),
+            stage2: {
+              constraints,
+              output,
+              ts: Date.now(),
+            },
+          },
+        };
+        await (window as any).electronAPI.updateProject(currentProject.id, {
+          settings: newSettings,
+        });
+      } catch (e) {
+        console.error('Autosave failed:', e);
+      }
+    }, 10_000);
+
+    return () => clearTimeout(timer);
+  }, [constraints, output, currentProject?.id]);
 
   async function generate() {
     setIsGenerating(true);

@@ -1,23 +1,79 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Editor } from '../common/Editor';
 import { QuestionPanel } from '../common/QuestionPanel';
 import { useProjectStore } from '../../stores/project';
 import { useAppStore } from '../../stores/app';
+import { STAGE_PROMPTS } from '../../utils/prompts';
 
 export function Stage7TaskPlan() {
   const [taskPreferences, setTaskPreferences] = useState('');
   const [output, setOutput] = useState('');
   const [questions, setQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [evalResult, setEvalResult] = useState<any | null>(null);
   
   // Zustand helpers, including XState workflow actions
   const { 
     saveStageData, 
     getContextForStage,
     workflowPrev,
-    acceptStage
+    acceptStage,
+    currentProject
   } = useProjectStore();
   const { llm } = useAppStore();
+  
+  /* ---------------- Utility ---------------- */
+  function parseJsonStrict(text: string) {
+    try {
+      const match =
+        text.match(/```json\\s*([\\s\\S]*?)\\s*```/i) ||
+        text.match(/\\{[\\s\\S]*\\}/);
+      if (match) return JSON.parse(match[1] ?? match[0]);
+    } catch {/* ignore */}
+    return null;
+  }
+
+  /* ---------------- Hydrate from autosave ---------------- */
+  useEffect(() => {
+    const auto = currentProject?.settings?.autosave?.stage7;
+    if (auto) {
+      if (auto.taskPreferences && !taskPreferences) setTaskPreferences(auto.taskPreferences);
+      if (auto.output && !output) setOutput(auto.output);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProject?.id]);
+
+  /* ---------------- Autosave every 10s ---------------- */
+  useEffect(() => {
+    if (!currentProject?.id) return;
+    if (!taskPreferences.trim() && !output.trim()) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const existing = currentProject.settings || {};
+        const newSettings = {
+          ...existing,
+          autosave: {
+            ...(existing.autosave || {}),
+            stage7: {
+              taskPreferences,
+              output,
+              ts: Date.now(),
+            },
+          },
+        };
+        await (window as any).electronAPI.updateProject(currentProject.id, {
+          settings: newSettings,
+        });
+      } catch (e) {
+        console.error('Autosave failed:', e);
+      }
+    }, 10_000);
+
+    return () => clearTimeout(timer);
+  }, [taskPreferences, output, currentProject?.id]);
   
   async function generate() {
     setIsGenerating(true);
@@ -67,6 +123,52 @@ export function Stage7TaskPlan() {
       console.error('Generation error:', error);
     } finally {
       setIsGenerating(false);
+    }
+  }
+  
+  /* ---------------- Evaluation helpers ---------------- */
+  async function evaluateOutput() {
+    if (!output) return;
+    setIsEvaluating(true);
+    setEvalResult(null);
+    try {
+      const prompt = STAGE_PROMPTS.stage7.evaluate(output);
+      const res: any = await (window as any).electronAPI.generateContent(prompt, {
+        model: llm.selectedModel?.id,
+        temperature: 0,
+        maxTokens: 600,
+      });
+      const parsed = typeof res === 'string' ? parseJsonStrict(res) : null;
+      if (parsed) {
+        setEvalResult(parsed);
+        await saveStageData(7, { content: output, feedback: parsed });
+      }
+    } catch (e) {
+      console.error('Evaluation error:', e);
+    } finally {
+      setIsEvaluating(false);
+    }
+  }
+
+  async function applyOptimizations() {
+    if (!evalResult?.deltas) return;
+    setIsOptimizing(true);
+    try {
+      const prompt = STAGE_PROMPTS.stage7.optimize(output, evalResult.deltas);
+      const improved = await (window as any).electronAPI.generateContent(prompt, {
+        model: llm.selectedModel?.id,
+        temperature: 0.3,
+        maxTokens: 900,
+      });
+      if (typeof improved === 'string') {
+        setOutput(improved);
+        setEvalResult(null);
+        await saveStageData(7, { content: improved, feedback: evalResult });
+      }
+    } catch (e) {
+      console.error('Optimize error:', e);
+    } finally {
+      setIsOptimizing(false);
     }
   }
   
@@ -136,6 +238,44 @@ export function Stage7TaskPlan() {
           questions={questions}
           onSubmit={handleFeedback}
         />
+      )}
+      
+      {/* Evaluation & Optimization */}
+      {output && (
+        <div className="space-y-4">
+          <button
+            onClick={evaluateOutput}
+            disabled={isEvaluating || isGenerating}
+            className="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+          >
+            {isEvaluating ? 'Evaluating...' : 'Evaluate'}
+          </button>
+
+          {evalResult && (
+            <div className="bg-gray-700 rounded-lg p-4">
+              <h4 className="text-lg font-semibold text-white mb-2">
+                Evaluation Result (Score: {evalResult.score})
+              </h4>
+              <ul className="list-disc pl-5 text-gray-300 mb-2">
+                {evalResult.checklist?.map((c: any, i: number) => (
+                  <li key={i} className={c.pass ? 'text-green-400' : 'text-red-400'}>
+                    {c.criterion}: {c.pass ? 'Pass' : 'Fail'} – {c.notes}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-gray-400 mb-2">
+                Suggested deltas: {evalResult.deltas?.length ?? 0}
+              </p>
+              <button
+                onClick={applyOptimizations}
+                disabled={isOptimizing}
+                className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+              >
+                {isOptimizing ? 'Applying...' : 'Apply Optimizations'}
+              </button>
+            </div>
+          )}
+        </div>
       )}
       
       {/* Action Buttons */}

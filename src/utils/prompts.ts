@@ -307,6 +307,45 @@ ${questionsAndAnswers}
 
 Generate improved user flows in structured JSON format.`;
     }
+
+    ,
+
+    /**
+     * Evaluator prompt for Stage 3: assesses user flows
+     */
+    evaluate: (current: string): string => `
+You are a lead UX researcher. Critically evaluate the following USER FLOWS.
+
+Respond with STRICT JSON ONLY:
+{
+  "score": 0-100,
+  "summary": "<one-sentence verdict>",
+  "checklist": [
+    { "criterion": "<e.g., completeness>", "pass": true|false, "notes": "<why/what's missing>" }
+  ],
+  "deltas": [
+    { "target": "<flow/section>", "action": "add"|"edit"|"remove", "detail": "<fix>" }
+  ]
+}
+
+USER FLOWS:
+${current}
+`,
+
+    /**
+     * Optimizer prompt for Stage 3
+     */
+    optimize: (current: string, deltas: any[]): string => `
+You are refining user flows. Apply the provided deltas.
+
+Current user flows:
+${current}
+
+Deltas:
+${JSON.stringify(deltas, null, 2)}
+
+Return ONLY the revised user flows (markdown/JSON), no extra commentary.
+`
   },
 
   stage4: {
@@ -359,6 +398,45 @@ ${questionsAndAnswers}
 
 Generate an improved style guide in structured JSON format.`;
     }
+
+    ,
+
+    /**
+     * Evaluator prompt for Stage 4: assesses style guide
+     */
+    evaluate: (current: string): string => `
+You are a senior UI designer. Evaluate the following STYLE GUIDE.
+
+Return STRICT JSON ONLY:
+{
+  "score": 0-100,
+  "summary": "<one-sentence verdict>",
+  "checklist": [
+    { "criterion": "<e.g., accessibility>", "pass": true|false, "notes": "<why>" }
+  ],
+  "deltas": [
+    { "target": "<section>", "action": "add"|"edit"|"remove", "detail": "<improvement>" }
+  ]
+}
+
+STYLE GUIDE:
+${current}
+`,
+
+    /**
+     * Optimizer prompt for Stage 4
+     */
+    optimize: (current: string, deltas: any[]): string => `
+You are improving a style guide. Apply these deltas.
+
+Current guide:
+${current}
+
+Deltas:
+${JSON.stringify(deltas, null, 2)}
+
+Return ONLY the updated style guide (markdown/JSON), no commentary.
+`
   },
 
   stage5: {
@@ -412,6 +490,45 @@ ${questionsAndAnswers}
 
 Generate an improved technical specification in structured JSON format.`;
     }
+
+    ,
+
+    /**
+     * Evaluator prompt for Stage 5: assesses technical specification
+     */
+    evaluate: (current: string): string => `
+You are a chief engineer. Evaluate the following TECHNICAL SPECIFICATION.
+
+Respond with STRICT JSON ONLY:
+{
+  "score": 0-100,
+  "summary": "<one-sentence verdict>",
+  "checklist": [
+    { "criterion": "<e.g., API completeness>", "pass": true|false, "notes": "<detail>" }
+  ],
+  "deltas": [
+    { "target": "<section>", "action": "add"|"edit"|"remove", "detail": "<fix>" }
+  ]
+}
+
+TECHNICAL SPECIFICATION:
+${current}
+`,
+
+    /**
+     * Optimizer prompt for Stage 5
+     */
+    optimize: (current: string, deltas: any[]): string => `
+You are refining a technical specification. Apply the following deltas.
+
+Current spec:
+${current}
+
+Deltas:
+${JSON.stringify(deltas, null, 2)}
+
+Return ONLY the revised specification (markdown/JSON), no commentary.
+`
   },
 
   stage6: {
@@ -465,6 +582,45 @@ ${questionsAndAnswers}
 
 Generate an improved data architecture in structured JSON format.`;
     }
+
+    ,
+
+    /**
+     * Evaluator prompt for Stage 6: assesses data architecture
+     */
+    evaluate: (current: string): string => `
+You are a senior data architect. Evaluate the following DATA ARCHITECTURE.
+
+Return STRICT JSON ONLY:
+{
+  "score": 0-100,
+  "summary": "<one-sentence verdict>",
+  "checklist": [
+    { "criterion": "<e.g., normalization>", "pass": true|false, "notes": "<detail>" }
+  ],
+  "deltas": [
+    { "target": "<table/flow>", "action": "add"|"edit"|"remove", "detail": "<improvement>" }
+  ]
+}
+
+DATA ARCHITECTURE:
+${current}
+`,
+
+    /**
+     * Optimizer prompt for Stage 6
+     */
+    optimize: (current: string, deltas: any[]): string => `
+You are improving a data architecture. Apply the provided deltas.
+
+Current design:
+${current}
+
+Deltas:
+${JSON.stringify(deltas, null, 2)}
+
+Return ONLY the updated data architecture (markdown/JSON), no commentary.
+`
   },
 
   stage7: {
@@ -517,6 +673,45 @@ ${questionsAndAnswers}
 
 Generate an improved task plan in structured JSON format.`;
     }
+
+    ,
+
+    /**
+     * Evaluator prompt for Stage 7: assesses task plan
+     */
+    evaluate: (current: string): string => `
+You are a programme manager. Evaluate the following TASK PLAN.
+
+Provide STRICT JSON ONLY:
+{
+  "score": 0-100,
+  "summary": "<one-sentence verdict>",
+  "checklist": [
+    { "criterion": "<e.g., dependency logic>", "pass": true|false, "notes": "<why>" }
+  ],
+  "deltas": [
+    { "target": "<task/phase>", "action": "add"|"edit"|"remove", "detail": "<improve>" }
+  ]
+}
+
+TASK PLAN:
+${current}
+`,
+
+    /**
+     * Optimizer prompt for Stage 7
+     */
+    optimize: (current: string, deltas: any[]): string => `
+You are refining an implementation task plan. Apply these deltas.
+
+Current plan:
+${current}
+
+Deltas:
+${JSON.stringify(deltas, null, 2)}
+
+Return ONLY the updated task plan (markdown/JSON), no commentary.
+`
   },
 
   stage8: {
