@@ -8,6 +8,7 @@ import {
   saveStageData,
   listProjects,
   updateProject,
+  updateContext,
   saveLLMConfig,
   getActiveLLMConfig
 } from './ipc/database';
@@ -97,6 +98,11 @@ function setupIPCHandlers() {
   // LLM configuration persistence
   ipcMain.handle('llmConfig:getActive', async () => getActiveLLMConfig());
   ipcMain.handle('llmConfig:save', async (_event, cfg) => saveLLMConfig(cfg));
+
+  // Context aggregation/persistence
+  ipcMain.handle('context:update', async (_event, { projectId, data }) =>
+    updateContext(projectId, data)
+  );
 }
 
 app.on('window-all-closed', () => {

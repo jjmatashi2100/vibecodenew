@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Editor } from '../common/Editor';
 import { QuestionPanel } from '../common/QuestionPanel';
 import { useProjectStore } from '../../stores/project';
+import { useAppStore } from '../../stores/app';
 
 export function Stage7TaskPlan() {
   const [taskPreferences, setTaskPreferences] = useState('');
@@ -14,8 +15,9 @@ export function Stage7TaskPlan() {
     saveStageData, 
     getContextForStage,
     workflowPrev,
-    workflowNext
+    acceptStage
   } = useProjectStore();
+  const { llm } = useAppStore();
   
   async function generate() {
     setIsGenerating(true);
@@ -26,7 +28,7 @@ export function Stage7TaskPlan() {
     
     try {
       const result = await window.electronAPI.generateContent(prompt, {
-        model: 'mixtral:8x7b-instruct-q4_K_M',
+        model: llm.selectedModel?.id,
         temperature: 0.3,
         maxTokens: 900
       });
@@ -147,10 +149,7 @@ export function Stage7TaskPlan() {
           </button>
           
           <button
-            onClick={() => {
-              saveStageData(7, { content: output, isAccepted: true });
-              workflowNext();
-            }}
+            onClick={() => acceptStage(7, output)}
             className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
           >
             Accept & Continue

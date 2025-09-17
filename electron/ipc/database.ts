@@ -111,9 +111,18 @@ export function saveStageData(data: any) {
     data.isAccepted ? 1 : 0
   );
 
-  db.prepare(
-    `UPDATE projects SET current_stage = ?, updated_at = strftime('%s', 'now') WHERE id = ?`
-  ).run(data.stageNumber, data.projectId);
+  /* -----------------------------------------------------------
+     Advance project.current_stage only when this version is
+     explicitly accepted. When accepted, move to the *next*
+     stage (clamped 1‥8). Draft / evaluation iterations leave
+     current_stage unchanged.
+  ----------------------------------------------------------- */
+  if (data.isAccepted) {
+    const nextStage = Math.min(8, Math.max(1, (data.stageNumber ?? 1) + 1));
+    db.prepare(
+      `UPDATE projects SET current_stage = ?, updated_at = strftime('%s', 'now') WHERE id = ?`
+    ).run(nextStage, data.projectId);
+  }
 
   return id;
 }

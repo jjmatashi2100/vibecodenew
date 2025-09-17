@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Editor } from '../common/Editor';
 import { QuestionPanel } from '../common/QuestionPanel';
 import { useProjectStore } from '../../stores/project';
+import { useAppStore } from '../../stores/app';
 
 export function Stage3UserFlow() {
   const [userScenarios, setUserScenarios] = useState('');
@@ -9,7 +10,8 @@ export function Stage3UserFlow() {
   const [questions, setQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   
-  const { saveStageData, getContextForStage, workflowPrev, workflowNext } = useProjectStore();
+  const { saveStageData, getContextForStage, workflowPrev, workflowNext, acceptStage } = useProjectStore();
+  const { llm } = useAppStore();
   
   async function generate() {
     setIsGenerating(true);
@@ -20,7 +22,7 @@ export function Stage3UserFlow() {
     
     try {
       const result = await window.electronAPI.generateContent(prompt, {
-        model: 'mixtral:8x7b-instruct-q4_K_M',
+        model: llm.selectedModel?.id,
         temperature: 0.3,
         maxTokens: 800
       });
@@ -141,10 +143,7 @@ export function Stage3UserFlow() {
           </button>
           
           <button
-            onClick={() => {
-              saveStageData(3, { content: output, isAccepted: true });
-              workflowNext();
-            }}
+            onClick={() => acceptStage(3, output)}
             className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
           >
             Accept & Continue

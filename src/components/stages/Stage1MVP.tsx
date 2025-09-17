@@ -10,7 +10,7 @@ export function Stage1MVP() {
   const [output, setOutput] = useState('');
   const [questions, setQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const { saveStageData, getContextForStage, currentProject } = useProjectStore();
+  const { saveStageData, getContextForStage, currentProject, acceptStage } = useProjectStore();
   const { llm } = useAppStore();
 
   /* ------------------------------------------------------------------
@@ -182,6 +182,26 @@ export function Stage1MVP() {
           questions={questions}
           onSubmit={handleFeedback}
         />
+      )}
+
+      {/* Action Buttons */}
+      {output && (
+        <div className="flex justify-between">
+          {/* Stage 1 has no real \"Previous\" target but keep visual consistency */}
+          <button
+            disabled
+            className="px-6 py-2 bg-gray-600 text-white rounded-md cursor-not-allowed"
+          >
+            Previous
+          </button>
+
+          <button
+            onClick={() => acceptStage(1, output)}
+            className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          >
+            Accept &amp; Continue
+          </button>
+        </div>
       )}
     </div>
   );

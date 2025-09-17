@@ -45,6 +45,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateProject: (id: string, data: any) =>
     ipcRenderer.invoke('project:update', { id, data }),
 
+  // context aggregation / persistence
+  updateContext: (projectId: string, data: any) =>
+    ipcRenderer.invoke('context:update', { projectId, data }),
+
   llmConfigGetActive: () => ipcRenderer.invoke('llmConfig:getActive'),
   llmConfigSave: (cfg: any) => ipcRenderer.invoke('llmConfig:save', cfg),
 });

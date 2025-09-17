@@ -18,6 +18,7 @@ declare global {
       generateContent: (prompt: string, options: any) => Promise<string | { error: string }>;
       exportProject: (data: any) => Promise<any>;
       getVersion: () => Promise<string>;
+      updateContext: (projectId: string, data: any) => Promise<any>;
     };
   }
 }
@@ -26,12 +27,15 @@ interface ProjectStore {
   currentProject: any;
   currentStage: number;
   stageData: Record<number, any>;
+  acceptedStages: number[];
   context: any;
   
   loadProject: (id: string) => Promise<void>;
   saveStageData: (stage: number, data: any) => Promise<void>;
+  acceptStage: (stage: number, content: any, extra?: { questions?: any; feedback?: any }) => Promise<void>;
   getContextForStage: (stage: number) => any;
   setCurrentStage: (stage: number) => void;
+  isStageAccepted: (stage: number) => boolean;
 
   /* XState workflow helpers */
   startWorkflow: () => void;
@@ -50,18 +54,32 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   currentProject: null,
   currentStage: 1,
   stageData: {},
+  acceptedStages: [],
   context: {},
   
   loadProject: async (id: string) => {
     try {
       const project = await window.electronAPI.loadProject(id);
+      /* -----------------------------------------------------------
+         Build maps with ONLY accepted rows (is_accepted === 1)
+         For each stage we keep the latest accepted version.
+      ----------------------------------------------------------- */
+      const acceptedMap: Record<number, any> = {};
+      const acceptedList: number[] = [];
+      (project.stages || []).forEach((row: any) => {
+        if (row.is_accepted) {
+          acceptedMap[row.stage_number] = JSON.parse(row.content);
+          if (!acceptedList.includes(row.stage_number)) {
+            acceptedList.push(row.stage_number);
+          }
+        }
+      });
+
       set({
         currentProject: project,
         currentStage: project.current_stage ?? 1,
-        stageData: (project.stages || []).reduce((acc: any, s: any) => { 
-          acc[s.stage_number] = JSON.parse(s.content); 
-          return acc; 
-        }, {}),
+        stageData: acceptedMap,
+        acceptedStages: acceptedList,
         context: project.context || {}
       });
     } catch (error) {
@@ -76,15 +94,62 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         stageNumber: stage, 
         ...data 
       });
-      
-      set((state) => ({ 
-        stageData: { 
-          ...state.stageData, 
-          [stage]: data.content 
-        } 
-      }));
+      // Reflect only accepted versions in local state
+      if (data.isAccepted) {
+        set((state) => ({
+          stageData: {
+            ...state.stageData,
+            [stage]: data.content
+          },
+          acceptedStages: state.acceptedStages.includes(stage)
+            ? state.acceptedStages
+            : [...state.acceptedStages, stage]
+        }));
+      }
     } catch (error) {
       console.error('Failed to save stage data:', error);
+    }
+  },
+  
+  acceptStage: async (stage: number, content: any, extra) => {
+    const { questions = [], feedback = [] } = extra || {};
+    try {
+      await window.electronAPI.saveStageData({
+        projectId: get().currentProject.id,
+        stageNumber: stage,
+        content,
+        questions,
+        feedback,
+        isAccepted: true
+      });
+
+      // Update local cache
+      set((state) => ({
+        stageData: { ...state.stageData, [stage]: content },
+        acceptedStages: state.acceptedStages.includes(stage)
+          ? state.acceptedStages
+          : [...state.acceptedStages, stage]
+      }));
+
+      /* -------- Update aggregated context (selected stages only) -------- */
+      let partial: any = {};
+      if (stage === 1) partial = { global_context: content };
+      else if (stage === 2) partial = { tech_stack: content };
+      else if (stage === 4) partial = { style_guide: content };
+      else if (stage === 6) partial = { data_models: content };
+
+      if (Object.keys(partial).length) {
+        try {
+          await window.electronAPI.updateContext(get().currentProject.id, partial);
+        } catch (err) {
+          console.error('Failed to update context:', err);
+        }
+      }
+
+      // Advance workflow
+      get().workflowNext();
+    } catch (error) {
+      console.error('Accept stage failed:', error);
     }
   },
   
@@ -103,6 +168,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     
     return ctx;
   },
+  
+  isStageAccepted: (stage: number) => get().acceptedStages.includes(stage),
   
   /* --------------------  XState integration  -------------------- */
 

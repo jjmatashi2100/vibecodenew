@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Editor } from '../common/Editor';
 import { QuestionPanel } from '../common/QuestionPanel';
 import { useProjectStore } from '../../stores/project';
+import { useAppStore } from '../../stores/app';
 
 export function Stage4StyleGuide() {
   const [designPreferences, setDesignPreferences] = useState('');
@@ -9,7 +10,8 @@ export function Stage4StyleGuide() {
   const [questions, setQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   
-  const { saveStageData, getContextForStage, workflowPrev, workflowNext } = useProjectStore();
+  const { saveStageData, getContextForStage, workflowPrev, acceptStage } = useProjectStore();
+  const { llm } = useAppStore();
   
   async function generate() {
     setIsGenerating(true);
@@ -20,7 +22,7 @@ export function Stage4StyleGuide() {
     
     try {
       const result = await window.electronAPI.generateContent(prompt, {
-        model: 'mixtral:8x7b-instruct-q4_K_M',
+        model: llm.selectedModel?.id,
         temperature: 0.3,
         maxTokens: 800
       });
@@ -141,10 +143,7 @@ export function Stage4StyleGuide() {
           </button>
           
           <button
-            onClick={() => {
-              saveStageData(4, { content: output, isAccepted: true });
-              workflowNext();
-            }}
+            onClick={() => acceptStage(4, output)}
             className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
           >
             Accept & Continue

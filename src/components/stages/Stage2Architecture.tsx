@@ -11,7 +11,7 @@ export function Stage2Architecture() {
   const [questions, setQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   
-  const { saveStageData, getContextForStage, workflowPrev, workflowNext } = useProjectStore();
+  const { saveStageData, getContextForStage, workflowPrev, acceptStage } = useProjectStore();
   const { llm } = useAppStore();
   
   async function generate() {
@@ -144,10 +144,7 @@ export function Stage2Architecture() {
           </button>
           
           <button
-            onClick={() => {
-              saveStageData(2, { content: output, isAccepted: true });
-              workflowNext();
-            }}
+            onClick={() => acceptStage(2, output)}
             className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
           >
             Accept & Continue
