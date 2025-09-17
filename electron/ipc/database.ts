@@ -132,19 +132,40 @@ export function listProjects() {
 }
 
 export function updateProject(id: string, data: any) {
-  const { name, description, current_stage, is_completed, settings } = data;
+  /* -----------------------------------------------------------
+     Load existing values first to ensure NOT NULL columns are
+     preserved when caller omits them.
+  ----------------------------------------------------------- */
+  const existing = db
+    .prepare(
+      'SELECT name, description, current_stage, is_completed, settings FROM projects WHERE id = ?'
+    )
+    .get(id) as any;
+
+  if (!existing) {
+    throw new Error(`Project not found: ${id}`);
+  }
+
+  const newName = data.name ?? existing.name;
+  const newDescription = data.description ?? existing.description;
+  const newStage = data.current_stage ?? existing.current_stage;
+  const newCompleted =
+    data.is_completed === undefined
+      ? existing.is_completed
+      : data.is_completed
+      ? 1
+      : 0;
+  const newSettings =
+    data.settings !== undefined
+      ? JSON.stringify(data.settings)
+      : existing.settings;
+
   db.prepare(`
-    UPDATE projects 
+    UPDATE projects
     SET name = ?, description = ?, current_stage = ?, is_completed = ?, settings = ?, updated_at = strftime('%s', 'now')
     WHERE id = ?
-  `).run(
-    name, 
-    description, 
-    current_stage ?? (db.prepare('SELECT current_stage FROM projects WHERE id = ?').get(id) as any)?.current_stage, 
-    is_completed ? 1 : 0, 
-    settings ? JSON.stringify(settings) : (db.prepare('SELECT settings FROM projects WHERE id = ?').get(id) as any)?.settings,
-    id
-  );
+  `).run(newName, newDescription, newStage, newCompleted, newSettings, id);
+
   return loadProject(id);
 }
 
