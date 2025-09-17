@@ -42,6 +42,8 @@ export function StageShell({
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [evalResult, setEvalResult] = useState<any | null>(null);
+  // Derived busy state
+  const isBusy = isGenerating || isEvaluating || isOptimizing;
 
   // Store access
   const {
@@ -249,6 +251,17 @@ ${lastChunk}`;
   }
   
   /* ----------------- Evaluation helpers ----------------- */
+  /* ------------------------ Cancel helpers ------------------------ */
+  function cancelCurrent() {
+    try {
+      (window as any).electronAPI.cancelGenerate?.();
+    } catch {
+      /* ignore */
+    }
+    setIsGenerating(false);
+    setIsEvaluating(false);
+    setIsOptimizing(false);
+  }
   async function evaluateOutput() {
     if (!output) return;
     setIsEvaluating(true);
@@ -377,6 +390,15 @@ ${lastChunk}`;
             {isOptimizing ? 'Optimizing…' : 'Optimize'}
           </button>
 
+          {isBusy && (
+            <button
+              onClick={cancelCurrent}
+              className="px-4 py-1 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+            >
+              Stop
+            </button>
+          )}
+
           <button
             onClick={() => acceptStage(stageId, output)}
             disabled={accepted || !output}
@@ -416,6 +438,15 @@ ${lastChunk}`;
             `Generate ${title}`
           )}
         </button>
+
+        {isBusy && (
+          <button
+            onClick={cancelCurrent}
+            className="ml-2 px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+          >
+            Stop
+          </button>
+        )}
       </div>
       
       {/* Output Section */}
@@ -453,6 +484,15 @@ ${lastChunk}`;
           >
             {isEvaluating ? 'Evaluating...' : 'Evaluate'}
           </button>
+
+          {isBusy && (
+            <button
+              onClick={cancelCurrent}
+              className="ml-2 px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+            >
+              Stop
+            </button>
+          )}
 
           {evalResult && (
             <div className="bg-gray-700 rounded-lg p-4">
