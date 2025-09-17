@@ -51,6 +51,47 @@ function hasProperty(obj: any, propPath: string): boolean {
 }
 
 /**
+ * Retrieve a nested property value using dot-notation path.
+ * Returns undefined if the path does not exist.
+ * @param obj  Source object
+ * @param propPath Dot-notation path (e.g. "a.b.c")
+ */
+function getPropertyValue(obj: any, propPath: string): any {
+  if (!obj) return undefined;
+  const parts = propPath.split('.');
+  let current = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined || typeof current !== 'object') {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return current;
+}
+
+/**
+ * Count elements in list-like structures.
+ * - Arrays ⇒ length
+ * - Objects ⇒ number of enumerable keys
+ * - Strings ⇒ split by newline or semicolon and count non-empty items
+ * Anything else ⇒ 0
+ * @param value Value to inspect
+ */
+function countListLike(value: any): number {
+  if (!value) return 0;
+  if (Array.isArray(value)) return value.length;
+  if (typeof value === 'object') return Object.keys(value).length;
+  if (typeof value === 'string') {
+    // Split on newlines or semicolons/commas and trim blanks
+    return value
+      .split(/[\n;,]+/)
+      .map(s => s.trim())
+      .filter(Boolean).length;
+  }
+  return 0;
+}
+
+/**
  * Helper to check if any of the properties exist
  * @param obj The object to check
  * @param propPaths Array of property paths to check
@@ -73,14 +114,23 @@ export const STAGE_VALIDATORS = {
         return { valid: false, issues: ["Output is empty or invalid"] };
       }
       
-      // Check MVP features (minimum 3)
-      const featuresPath = hasProperty(output, 'mvp_features') ? 'mvp_features' : 
-                          hasProperty(output, 'features') ? 'features' : '';
-      
+      // Check MVP features (minimum 3) with robust counting
+      const candidatePaths = [
+        'mvp_features',
+        'features',
+        'core_features',
+        'mvp.core_features'
+      ];
+      const featuresPath = candidatePaths.find(p => hasProperty(output, p));
+
       if (!featuresPath) {
         issues.push("MVP features section is missing");
-      } else if (!hasMinLength(output[featuresPath], 3)) {
-        issues.push("MVP must have at least 3 core features");
+      } else {
+        const value = getPropertyValue(output, featuresPath);
+        const count = countListLike(value);
+        if (count < 3) {
+          issues.push("MVP must have at least 3 core features");
+        }
       }
       
       // Check target audience
