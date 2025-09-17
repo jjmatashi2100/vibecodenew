@@ -48,7 +48,7 @@ class OllamaProvider implements LLMProvider {
   }
   
   async *generate(prompt: string, options: any = {}): AsyncGenerator<string, void, unknown> {
-    const guards = createAbortGuards();
+    const guards = createAbortGuards(options.inactivityMs, options.overallMs);
     try {
       const res = await fetch(`${this.endpoint}/api/generate`, {
         method: 'POST',
@@ -60,7 +60,7 @@ class OllamaProvider implements LLMProvider {
           stream: true,
           options: {
             temperature: options.temperature ?? 0.3,
-            num_predict: options.maxTokens ?? 700,
+            num_predict: (options.unbounded ? -1 : (options.maxTokens ?? 700)),
           },
         }),
       });
@@ -126,7 +126,7 @@ class LMStudioProvider implements LLMProvider {
     const model = options.model;
     if (!model) throw new Error('No model selected');
 
-    const guards = createAbortGuards();
+    const guards = createAbortGuards(options.inactivityMs, options.overallMs);
 
     // helper to stream SSE payloads
     const streamResponse = async function* (
@@ -172,7 +172,9 @@ class LMStudioProvider implements LLMProvider {
         body: JSON.stringify({
           model,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: options.maxTokens ?? 700,
+          max_tokens: options.unbounded
+            ? (options.maxTokens ?? 4096)
+            : (options.maxTokens ?? 700),
           temperature: options.temperature ?? 0.3,
           stream: true
         })
@@ -199,7 +201,9 @@ class LMStudioProvider implements LLMProvider {
         body: JSON.stringify({
           model,
           prompt,
-          max_tokens: options.maxTokens ?? 700,
+          max_tokens: options.unbounded
+            ? (options.maxTokens ?? 4096)
+            : (options.maxTokens ?? 700),
           temperature: options.temperature ?? 0.3,
           stream: true
         })

@@ -74,6 +74,42 @@ export function StageShell({
     return null;
   }
 
+  /* --------------------------------------------------
+     Helper to check if JSON is incomplete/invalid
+  -------------------------------------------------- */
+  function isIncompleteJson(text: string): boolean {
+    return !parseJsonStrict(text);
+  }
+
+  /* --------------------------------------------------
+     Helper to continue generating from partial JSON
+  -------------------------------------------------- */
+  async function continueJson(partial: string, budget: number): Promise<string> {
+    // Get the last ~1000 chars to provide context
+    const lastChunk = partial.slice(Math.max(0, partial.length - 1000));
+    
+    const continuePrompt = `You were generating a JSON response but it was cut off. 
+Continue exactly where you stopped. DO NOT repeat any content.
+DO NOT start with explanations or apologies.
+Return ONLY the continuation of the JSON, starting from:
+
+${lastChunk}`;
+
+    try {
+      const continuation = await (window as any).electronAPI.generateContent(continuePrompt, {
+        model: llm.selectedModel?.id,
+        temperature: 0.2, // Lower temperature for more deterministic continuation
+        maxTokens: budget,
+        unbounded: true, // Try to use unbounded if provider supports it
+      });
+      
+      return typeof continuation === 'string' ? continuation : '';
+    } catch (error) {
+      console.error('Continuation error:', error);
+      return '';
+    }
+  }
+
   /* ------------------------------------------------------------------
      Hydrate input / output from autosave on mount or project change
   -------------------------------------------------------------------*/
@@ -139,12 +175,32 @@ export function StageShell({
       });
       
       if (typeof result === 'string') {
-        setOutput(result);
+        let aggregate = result;
+        setOutput(aggregate);
+        
+        // Auto-continue if the JSON is incomplete
+        if (isIncompleteJson(aggregate)) {
+          const continuationBudget = stageId === 1 ? 1500 : stageId === 3 ? 1200 : 800;
+          
+          // Try up to 2 continuation passes
+          for (let pass = 0; pass < 2; pass++) {
+            if (!isIncompleteJson(aggregate)) break; // Stop if we have valid JSON
+            
+            const continuation = await continueJson(aggregate, continuationBudget);
+            if (!continuation) break; // Stop if continuation failed
+            
+            aggregate += continuation;
+            setOutput(aggregate); // Update UI with progress
+            
+            // If we got valid JSON, stop continuing
+            if (!isIncompleteJson(aggregate)) break;
+          }
+        }
         
         // Try to parse questions from output
         try {
-          const jsonMatch = result.match(/```json\n([\s\S]*?)\n```/) || 
-                           result.match(/{[\s\S]*}/);
+          const jsonMatch = aggregate.match(/```json\n([\s\S]*?)\n```/) || 
+                           aggregate.match(/{[\s\S]*}/);
           
           if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0].replace(/```json\n|```/g, ''));
@@ -174,9 +230,9 @@ export function StageShell({
           setQuestions([]);
         }
         
-        // Save to database
+        // Save to database (using final aggregate with continuations)
         await saveStageData(stageId, {
-          content: result,
+          content: aggregate,
           questions: questions
         });
       }
@@ -221,10 +277,35 @@ export function StageShell({
         temperature: 0.3,
         maxTokens: (stageId === 1 || stageId === 3) ? 1500 : 900,
       });
+      
       if (typeof improved === 'string') {
-        setOutput(improved);
+        let improvedAggregate = improved;
+        setOutput(improvedAggregate);
+        
+        // Auto-continue if the JSON is incomplete
+        if (isIncompleteJson(improvedAggregate)) {
+          const continuationBudget = stageId === 1 ? 1500 : stageId === 3 ? 1200 : 800;
+          
+          // Try up to 2 continuation passes
+          for (let pass = 0; pass < 2; pass++) {
+            if (!isIncompleteJson(improvedAggregate)) break; // Stop if we have valid JSON
+            
+            const continuation = await continueJson(improvedAggregate, continuationBudget);
+            if (!continuation) break; // Stop if continuation failed
+            
+            improvedAggregate += continuation;
+            setOutput(improvedAggregate); // Update UI with progress
+            
+            // If we got valid JSON, stop continuing
+            if (!isIncompleteJson(improvedAggregate)) break;
+          }
+        }
+        
         setEvalResult(null);
-        await saveStageData(stageId, { content: improved, feedback: evalResult });
+        await saveStageData(stageId, { 
+          content: improvedAggregate, 
+          feedback: evalResult 
+        });
       }
     } catch (e) {
       console.error('Optimize error:', e);
