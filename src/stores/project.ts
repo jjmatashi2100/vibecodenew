@@ -48,6 +48,10 @@ interface ProjectStore {
   /* Cycle helpers */
   setCycle: (cycle: number) => Promise<void>;
   startNewCycle: () => Promise<void>;
+
+  /* Project switching */
+  closeProject: () => Promise<void>;
+  listProjects: () => Promise<any[]>;
 }
 
 /* -----------------------------------------------------------
@@ -233,6 +237,56 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     } catch (e) {
       console.error('Failed to start new cycle:', e);
     }
+  },
+
+  /* ---------------- Project switching helpers ---------------- */
+  listProjects: async () => {
+    try {
+      return await window.electronAPI.listProjects();
+    } catch (e) {
+      console.error('Failed to list projects:', e);
+      return [];
+    }
+  },
+
+  closeProject: async () => {
+    const state = get();
+    const proj = state.currentProject;
+    if (!proj) return;
+
+    try {
+      // Persist the current stage & settings snapshot
+      await window.electronAPI.updateProject(proj.id, {
+        current_stage: state.currentStage,
+        current_cycle: proj.current_cycle,
+        settings: proj.settings,
+      });
+    } catch (e) {
+      console.error('Failed to persist project before close:', e);
+    }
+
+    // Attempt to cancel any running generation
+    try {
+      (window as any).electronAPI.cancelGenerate?.();
+    } catch {
+      /* ignore */
+    }
+
+    // Stop workflow service
+    if (workflowService?.stop) {
+      workflowService.stop();
+      workflowService = null;
+    }
+
+    // Clear Zustand project state
+    set({
+      currentProject: null,
+      currentStage: 1,
+      currentCycle: 1,
+      stageData: {},
+      acceptedStages: [],
+      context: {},
+    });
   },
 
   /* --------------------  XState integration  -------------------- */

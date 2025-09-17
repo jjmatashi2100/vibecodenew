@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAppStore } from '../../stores/app';
 import { useProjectStore } from '../../stores/project';
 import { SettingsPanel } from './SettingsPanel';
+import { ProjectSwitcher } from './ProjectSwitcher';
 
 export function Header() {
   const {
@@ -15,6 +16,7 @@ export function Header() {
 
   // local UI state
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(false);
 
   // Current project info
   const {
@@ -23,6 +25,7 @@ export function Header() {
     setCycle,
     startNewCycle,
     isStageAccepted,
+    closeProject,
   } = useProjectStore();
 
   /* ------------------ Cycle helpers ------------------ */
@@ -129,6 +132,24 @@ export function Header() {
             New Cycle
           </button>
         )}
+
+        {/* Project management */}
+        <button
+          onClick={async () => {
+            // persist & close current project
+            await closeProject();
+          }}
+          className="text-xs bg-yellow-700 hover:bg-yellow-600 text-white px-2 py-1 rounded"
+        >
+          Save &amp; Close
+        </button>
+
+        <button
+          onClick={() => setProjectsOpen(true)}
+          className="text-xs bg-blue-700 hover:bg-blue-600 text-white px-2 py-1 rounded"
+        >
+          Projects
+        </button>
         {/* Settings Button */}
         <button
           onClick={() => setSettingsOpen(true)}
@@ -140,6 +161,11 @@ export function Header() {
       {/* Settings Panel Modal */}
       {settingsOpen && (
         <SettingsPanel onClose={() => setSettingsOpen(false)} />
+      )}
+
+      {/* Project Switcher Modal */}
+      {projectsOpen && (
+        <ProjectSwitcher onClose={() => setProjectsOpen(false)} />
       )}
     </header>
   );
