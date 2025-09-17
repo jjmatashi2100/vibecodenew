@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../stores/app';
+import { useProjectStore } from '../../stores/project';
 import { SettingsPanel } from './SettingsPanel';
 
 export function Header() {
@@ -15,6 +16,9 @@ export function Header() {
   // local UI state
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // Current project info
+  const { currentProject } = useProjectStore();
+
   const handleModelChange = (
     e: React.ChangeEvent<HTMLSelectElement>
   ) => {
@@ -29,7 +33,17 @@ export function Header() {
 
   return (
     <header className="h-12 bg-gray-850 border-b border-gray-700 flex items-center px-4 justify-between">
-      <div className="font-semibold">Vibe Code System</div>
+      {/* Project title & description */}
+      <div className="flex flex-col leading-tight max-w-md">
+        <span className="font-semibold truncate">
+          {currentProject?.name || 'Vibe Code System'}
+        </span>
+        {currentProject?.description ? (
+          <span className="text-xs text-gray-400 truncate">
+            {currentProject.description}
+          </span>
+        ) : null}
+      </div>
       <div className="flex items-center space-x-2">
         {/* Provider selector */}
         <select
