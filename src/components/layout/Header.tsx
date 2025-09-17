@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../../stores/app';
+import { SettingsPanel } from './SettingsPanel';
 
 export function Header() {
   const {
@@ -10,6 +11,9 @@ export function Header() {
   } = useAppStore();
   const activeProvider =
     llm.providers.find((p) => p.isActive)?.name || 'lmstudio';
+
+  // local UI state
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const handleModelChange = (
     e: React.ChangeEvent<HTMLSelectElement>
@@ -64,7 +68,18 @@ export function Header() {
         >
           Refresh
         </button>
+        {/* Settings Button */}
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className="text-xs bg-gray-600 hover:bg-gray-500 text-white px-2 py-1 rounded"
+        >
+          Settings
+        </button>
       </div>
+      {/* Settings Panel Modal */}
+      {settingsOpen && (
+        <SettingsPanel onClose={() => setSettingsOpen(false)} />
+      )}
     </header>
   );
 }

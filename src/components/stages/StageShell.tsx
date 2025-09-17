@@ -101,6 +101,8 @@ ${lastChunk}`;
         temperature: 0.2, // Lower temperature for more deterministic continuation
         maxTokens: budget,
         unbounded: true, // Try to use unbounded if provider supports it
+        inactivityMs: llm.params.inactivityMs,
+        overallMs: llm.params.overallMs,
       });
       
       return typeof continuation === 'string' ? continuation : '';
@@ -171,7 +173,10 @@ ${lastChunk}`;
       const result = await (window as any).electronAPI.generateContent(prompt, {
         model: llm.selectedModel?.id,
         temperature: 0.3,
-        maxTokens: initialTokenBudget
+        maxTokens: initialTokenBudget,
+        inactivityMs: llm.params.inactivityMs,
+        overallMs: llm.params.overallMs,
+        unbounded: llm.params.unbounded,
       });
       
       if (typeof result === 'string') {
@@ -254,6 +259,8 @@ ${lastChunk}`;
         model: llm.selectedModel?.id,
         temperature: 0,
         maxTokens: 600,
+        inactivityMs: llm.params.inactivityMs,
+        overallMs: llm.params.overallMs,
       });
       const parsed = typeof res === 'string' ? parseJsonStrict(res) : null;
       if (parsed) {
@@ -276,6 +283,9 @@ ${lastChunk}`;
         model: llm.selectedModel?.id,
         temperature: 0.3,
         maxTokens: (stageId === 1 || stageId === 3) ? 1500 : 900,
+        inactivityMs: llm.params.inactivityMs,
+        overallMs: llm.params.overallMs,
+        unbounded: llm.params.unbounded,
       });
       
       if (typeof improved === 'string') {
