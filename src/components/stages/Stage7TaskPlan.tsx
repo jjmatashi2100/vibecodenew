@@ -7,7 +7,7 @@ export function Stage7TaskPlan() {
       title="Task Planning"
       inputLabel="Development constraints and preferences (optional)"
       inputKey="taskPreferences"
-      placeholder="e.g., Team size, sprint duration, development priorities, resource constraints..."
+      placeholder="Team capacity, sprint cadence, deadlines/milestones, high-priority features, risk tolerance, dependencies/blockers."
     />
   );
 }

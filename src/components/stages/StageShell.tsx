@@ -50,8 +50,12 @@ export function StageShell({
     workflowPrev,
     acceptStage,
     currentProject,
+    isStageAccepted,
   } = useProjectStore();
   const { llm } = useAppStore();
+  
+  // Check if this stage is already accepted
+  const accepted = isStageAccepted(stageId);
 
   /* --------------------------------------------------
      Utility to safely parse strict JSON from LLM text
@@ -238,10 +242,21 @@ export function StageShell({
   return (
     <div className="space-y-6">
       {/* Input Section */}
-      <div className="bg-gray-700 rounded-lg p-6">
-        <h2 className="text-2xl font-bold text-white mb-4">
-          Stage {stageId}: {title}
-        </h2>
+      <div className="bg-gray-700 rounded-lg p-6 mb-4">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold text-white">
+            Stage {stageId}: {title}
+          </h2>
+          <span
+            className={`text-xs font-semibold px-2 py-0.5 rounded ${
+              accepted
+                ? 'bg-green-700 text-green-100'
+                : 'bg-gray-600 text-gray-300'
+            }`}
+          >
+            {accepted ? 'Accepted' : 'Draft'}
+          </span>
+        </div>
         
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -273,7 +288,7 @@ export function StageShell({
       
       {/* Output Section */}
       {output && (
-        <div className="bg-gray-700 rounded-lg p-6">
+        <div className="bg-gray-700 rounded-lg p-6 mb-4">
           <h3 className="text-xl font-semibold text-white mb-4">
             Generated {title}
           </h3>
@@ -288,15 +303,17 @@ export function StageShell({
       
       {/* Questions Section */}
       {questions.length > 0 && (
-        <QuestionPanel
-          questions={questions}
-          onSubmit={handleFeedback}
-        />
+        <div className="mb-4">
+          <QuestionPanel
+            questions={questions}
+            onSubmit={handleFeedback}
+          />
+        </div>
       )}
       
       {/* Evaluation & Optimization */}
       {output && (
-        <div className="space-y-4">
+        <div className="space-y-4 mb-4">
           <button
             onClick={evaluateOutput}
             disabled={isEvaluating || isGenerating}
@@ -310,14 +327,17 @@ export function StageShell({
               <h4 className="text-lg font-semibold text-white mb-2">
                 Evaluation Result (Score: {evalResult.score})
               </h4>
-              <ul className="list-disc pl-5 text-gray-300 mb-2">
+              {evalResult.summary && (
+                <p className="text-white mb-3">{evalResult.summary}</p>
+              )}
+              <ul className="list-disc pl-5 text-gray-300 mb-3">
                 {evalResult.checklist?.map((c: any, i: number) => (
                   <li key={i} className={c.pass ? 'text-green-400' : 'text-red-400'}>
                     {c.criterion}: {c.pass ? 'Pass' : 'Fail'} – {c.notes}
                   </li>
                 ))}
               </ul>
-              <p className="text-gray-400 mb-2">
+              <p className="text-gray-400 mb-3">
                 Suggested deltas: {evalResult.deltas?.length ?? 0}
               </p>
               <button
@@ -349,9 +369,14 @@ export function StageShell({
           
           <button
             onClick={() => acceptStage(stageId, output)}
-            className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            disabled={accepted}
+            className={`px-6 py-2 rounded-md ${
+              accepted
+                ? 'bg-green-800 text-white cursor-not-allowed'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
           >
-            Accept & Continue
+            {accepted ? 'Accepted' : 'Accept & Continue'}
           </button>
         </div>
       )}

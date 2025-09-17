@@ -7,7 +7,7 @@ export function Stage5TechSpec() {
       title="Technical Specification"
       inputLabel="Additional technical requirements or implementation details (optional)"
       inputKey="techRequirements"
-      placeholder="e.g., Specific implementation approaches, coding standards, testing requirements..."
+      placeholder="API contracts, coding standards, test thresholds, performance SLAs, telemetry/observability, auth requirements."
     />
   );
 }

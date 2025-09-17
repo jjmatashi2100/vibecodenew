@@ -7,7 +7,7 @@ export function Stage4StyleGuide() {
       title="Style Guide"
       inputLabel="Design preferences and brand guidelines (optional)"
       inputKey="designPreferences"
-      placeholder="e.g., Brand colors, typography preferences, design inspiration, accessibility requirements..."
+      placeholder="Brand/UI preferences: hex colors, font families/sizes, spacing scale, tone, icon style, motion, and WCAG targets."
     />
   );
 }

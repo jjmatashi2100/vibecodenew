@@ -7,9 +7,9 @@ export function Stage1MVP() {
       title="MVP Definition"
       inputLabel="Describe your app concept"
       inputKey="concept"
-      placeholder="A desktop app that helps developers..."
+      placeholder="Example: A desktop app that helps developers manage prompts, with offline-first storage and AI model selection."
       hidePrev
-      editorHeight="400px"
+      editorHeight="500px"
     />
   );
 }

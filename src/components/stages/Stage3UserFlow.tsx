@@ -4,10 +4,10 @@ export function Stage3UserFlow() {
   return (
     <StageShell
       stageId={3}
-      title="User Flow"
+      title="User Flows"
       inputLabel="Additional user scenarios or journey details (optional)"
       inputKey="userScenarios"
-      placeholder="e.g., Describe specific user journeys, key interactions, or scenarios to focus on..."
+      placeholder="Describe core journeys (onboarding, create project, iterate, evaluate, export), roles, and edge-cases you'd like emphasized."
     />
   );
 }

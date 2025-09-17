@@ -7,7 +7,7 @@ export function Stage6DataArch() {
       title="Data Architecture"
       inputLabel="Additional data requirements or constraints (optional)"
       inputKey="dataRequirements"
-      placeholder="e.g., Data retention policies, compliance requirements, expected data volume..."
+      placeholder="Data volume/velocity, PII classes, retention windows, indexing/partitioning, backup (RPO/RTO), compliance (GDPR/PCI)."
     />
   );
 }

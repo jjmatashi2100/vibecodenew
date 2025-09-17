@@ -7,7 +7,7 @@ export function Stage2Architecture() {
       title="Technical Architecture"
       inputLabel="Additional technical constraints or preferences (optional)"
       inputKey="constraints"
-      placeholder="e.g., Prefer serverless architecture, must use PostgreSQL, etc."
+      placeholder="Constraints examples: Cloud provider, data residency, preferred languages/frameworks, CI/CD, hosting model, budget, compliance."
     />
   );
 }
