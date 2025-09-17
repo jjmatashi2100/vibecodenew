@@ -10,8 +10,24 @@ export function Stage1MVP() {
   const [output, setOutput] = useState('');
   const [questions, setQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [evalResult, setEvalResult] = useState<any | null>(null);
   const { saveStageData, getContextForStage, currentProject, acceptStage } = useProjectStore();
   const { llm } = useAppStore();
+
+  /* Helper to safely pull JSON from LLM responses */
+  function parseJsonStrict(text: string) {
+    try {
+      const match =
+        text.match(/```json\\s*([\\s\\S]*?)\\s*```/i) ||
+        text.match(/\\{[\\s\\S]*\\}/);
+      if (match) return JSON.parse(match[1] ?? match[0]);
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
 
   /* ------------------------------------------------------------------
      Hydrate concept / output from autosave on mount or project change
@@ -116,6 +132,56 @@ export function Stage1MVP() {
     }
   }
   
+  /* -----------------------------------------------------------
+     Evaluation & Optimization helpers
+  ----------------------------------------------------------- */
+  async function evaluateOutput() {
+    if (!output) return;
+    setIsEvaluating(true);
+    setEvalResult(null);
+    try {
+      const prompt = STAGE_PROMPTS.stage1.evaluate(output);
+      const res: any = await (window as any).electronAPI.generateContent(prompt, {
+        model: llm.selectedModel?.id,
+        temperature: 0,
+        maxTokens: 600,
+      });
+      const parsed = typeof res === 'string' ? parseJsonStrict(res) : null;
+      if (parsed) {
+        setEvalResult(parsed);
+        // Persist feedback (non-accepted)
+        await saveStageData(1, { content: output, feedback: parsed });
+      }
+    } catch (e) {
+      console.error('Evaluation error:', e);
+    } finally {
+      setIsEvaluating(false);
+    }
+  }
+
+  async function applyOptimizations() {
+    if (!evalResult || !evalResult.deltas) return;
+    setIsOptimizing(true);
+    try {
+      const prompt = STAGE_PROMPTS.stage1.optimize(output, evalResult.deltas);
+      const improved = await (window as any).electronAPI.generateContent(prompt, {
+        model: llm.selectedModel?.id,
+        temperature: 0.3,
+        maxTokens: 1800,
+      });
+
+      if (typeof improved === 'string') {
+        setOutput(improved);
+        setEvalResult(null); // Clear evaluation so user can re-evaluate
+        await saveStageData(1, { content: improved, feedback: evalResult });
+      }
+    } catch (e) {
+      console.error('Optimize error:', e);
+    } finally {
+      setIsOptimizing(false);
+    }
+  }
+
   async function handleFeedback(answers: any[]) {
     // In a more complete implementation, we would:
     // 1. Build a new prompt incorporating the answers
@@ -182,6 +248,44 @@ export function Stage1MVP() {
           questions={questions}
           onSubmit={handleFeedback}
         />
+      )}
+
+      {/* Evaluation Panel */}
+      {output && (
+        <div className="space-y-4">
+          <button
+            onClick={evaluateOutput}
+            disabled={isEvaluating || isGenerating}
+            className="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+          >
+            {isEvaluating ? 'Evaluating...' : 'Evaluate'}
+          </button>
+
+          {evalResult && (
+            <div className="bg-gray-700 rounded-lg p-4">
+              <h4 className="text-lg font-semibold text-white mb-2">
+                Evaluation Result (Score: {evalResult.score})
+              </h4>
+              <ul className="list-disc pl-5 text-gray-300 mb-2">
+                {evalResult.checklist?.map((c: any, i: number) => (
+                  <li key={i} className={c.pass ? 'text-green-400' : 'text-red-400'}>
+                    {c.criterion}: {c.pass ? 'Pass' : 'Fail'} – {c.notes}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-gray-400 mb-2">
+                Suggested deltas: {evalResult.deltas?.length ?? 0}
+              </p>
+              <button
+                onClick={applyOptimizations}
+                disabled={isOptimizing}
+                className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+              >
+                {isOptimizing ? 'Applying...' : 'Apply Optimizations'}
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Action Buttons */}

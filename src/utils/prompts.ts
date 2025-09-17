@@ -84,6 +84,48 @@ Generate an improved, detailed MVP specification including:
 
 Format as structured JSON with clear sections.`;
     }
+
+    ,
+
+    /**
+     * Evaluator prompt for Stage 1: returns a strict JSON rubric & deltas
+     * @param current Current MVP plan
+     */
+    evaluate: (current: string): string => `
+You are a senior product analyst. Evaluate the following MVP plan.
+
+Return STRICT JSON ONLY with this shape – no prose outside of the JSON block:
+{
+  "score": 0-100,
+  "summary": "<one-sentence evaluation>",
+  "checklist": [
+    { "criterion": "<short name>", "pass": true|false, "notes": "<why>" }
+  ],
+  "deltas": [
+    { "target": "<section or feature>", "action": "add"|"edit"|"remove", "detail": "<what to change>" }
+  ]
+}
+
+MVP PLAN:
+${current}
+`,
+
+    /**
+     * Optimizer prompt for Stage 1 – applies deltas and returns an improved spec.
+     * @param current Current MVP content
+     * @param deltas  Array of change instructions from evaluator
+     */
+    optimize: (current: string, deltas: any[]): string => `
+You are revising an MVP specification. Apply the deltas below to the current spec.
+
+Current specification:
+${current}
+
+Deltas to apply (JSON):
+${JSON.stringify(deltas, null, 2)}
+
+Return ONLY the improved specification, preserving the original structure (markdown/JSON). Do NOT add commentary.
+`
   },
 
   stage2: {
@@ -170,6 +212,48 @@ Generate an improved, comprehensive technical architecture including:
 
 Format as structured JSON with clear sections.`;
     }
+
+    ,
+
+    /**
+     * Evaluator prompt for Stage 2: assesses technical architecture
+     * @param current Current architecture document
+     */
+    evaluate: (current: string): string => `
+You are a principal architect. Critically evaluate the following technical architecture.
+
+Respond with STRICT JSON ONLY:
+{
+  "score": 0-100,
+  "summary": "<one-sentence verdict>",
+  "checklist": [
+    { "criterion": "<e.g., scalability>", "pass": true|false, "notes": "<why/what's missing>" }
+  ],
+  "deltas": [
+    { "target": "<component/section>", "action": "add"|"edit"|"remove", "detail": "<fix>" }
+  ]
+}
+
+TECHNICAL ARCHITECTURE:
+${current}
+`,
+
+    /**
+     * Optimizer prompt for Stage 2 – applies deltas to improve architecture.
+     * @param current Current architecture
+     * @param deltas  Array of change instructions
+     */
+    optimize: (current: string, deltas: any[]): string => `
+You are refining a technical architecture document. Apply the provided deltas.
+
+Current architecture:
+${current}
+
+Deltas:
+${JSON.stringify(deltas, null, 2)}
+
+Return ONLY the revised architecture document (markdown/JSON), no extra commentary.
+`
   },
 
   stage3: {
