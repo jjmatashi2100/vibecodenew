@@ -127,14 +127,15 @@ export function StageShell({
     
     const context = getContextForStage(stageId);
     const prompt = prompts.initial(inputValue, context);
-    // Increase token allowance for verbose Stage 1 output
-    const tokenBudget = stageId === 1 ? 2500 : 900;
+    // Per-stage initial generation budget
+    const initialTokenBudget =
+      stageId === 1 ? 2500 : stageId === 3 ? 2200 : 900;
     
     try {
       const result = await (window as any).electronAPI.generateContent(prompt, {
         model: llm.selectedModel?.id,
         temperature: 0.3,
-        maxTokens: tokenBudget
+        maxTokens: initialTokenBudget
       });
       
       if (typeof result === 'string') {
@@ -218,7 +219,7 @@ export function StageShell({
       const improved = await (window as any).electronAPI.generateContent(prompt, {
         model: llm.selectedModel?.id,
         temperature: 0.3,
-        maxTokens: 900,
+        maxTokens: (stageId === 1 || stageId === 3) ? 1500 : 900,
       });
       if (typeof improved === 'string') {
         setOutput(improved);
