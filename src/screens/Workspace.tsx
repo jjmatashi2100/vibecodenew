@@ -24,7 +24,15 @@ const STAGES = [
 ];
 
 export function Workspace() {
-  const { currentStage, workflowNext, workflowPrev } = useProjectStore();
+  const {
+    currentStage,
+    workflowNext,
+    workflowPrev,
+    isStageAccepted,
+  } = useProjectStore();
+
+  // Can advance only if the current stage has been accepted
+  const canNext = isStageAccepted(currentStage) && currentStage < 8;
   const StageComponent = STAGES[Math.max(0, currentStage - 1)].component;
   
   return (
@@ -49,7 +57,7 @@ export function Workspace() {
 
               <button
                 onClick={() => workflowNext()}
-                disabled={currentStage === 8}
+                disabled={!canNext}
                 className="px-6 py-2 rounded-md bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed"
               >
                 Next

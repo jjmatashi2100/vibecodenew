@@ -18,6 +18,14 @@ interface LLMParams {
   maxTokens: number;
   repeatPenalty: number;
   seed?: number;
+  /** Allow provider-side unlimited generation if supported */
+  unbounded?: boolean;
+  /** Abort stream if no chunk arrives within this many ms */
+  inactivityMs?: number;
+  /** Abort the whole request after this many ms */
+  overallMs?: number;
+  /** Minimum number of core features required for Stage 1 validation */
+  minMVPFeatures?: number;
 }
 
 interface LLMConfig {
@@ -49,14 +57,18 @@ const defaultLLMParams: LLMParams = {
   topP: 0.9,
   maxTokens: 700,
   repeatPenalty: 1.15,
+  unbounded: false,
+  inactivityMs: 120_000,
+  overallMs: 240_000,
+  minMVPFeatures: 3,
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
   currentProject: null,
   llm: {
     providers: [
-      { name: 'ollama', endpoint: 'http://localhost:11434', isActive: false },
-      { name: 'lmstudio', endpoint: 'http://localhost:1234', isActive: false }
+      { name: 'ollama',   endpoint: 'http://localhost:11434', isActive: false },
+      { name: 'lmstudio', endpoint: 'http://localhost:1234',  isActive: false }
     ],
     availableModels: [],
     selectedModel: null,
@@ -162,15 +174,37 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   
-  setLLMParams: (params) => set((state) => ({
-    llm: {
-      ...state.llm,
-      params: {
-        ...state.llm.params,
-        ...params
+  /* -----------------------------------------------------------
+     Merge and persist updated LLM parameters
+  ----------------------------------------------------------- */
+  setLLMParams: (params) => {
+    set((state) => ({
+      llm: {
+        ...state.llm,
+        params: {
+          ...state.llm.params,
+          ...params,
+        },
+      },
+    }));
+
+    // Fire-and-forget persistence of the new param set
+    try {
+      const state = get();
+      const activeProvider = state.llm.providers.find((p) => p.isActive);
+      if (activeProvider) {
+        (window as any).electronAPI.llmConfigSave?.({
+          provider: activeProvider.name,
+          endpoint: activeProvider.endpoint,
+          model: state.llm.selectedModel?.id,
+          is_active: true,
+          parameters: state.llm.params, // already merged above
+        });
       }
+    } catch {
+      /* swallow persistence errors */
     }
-  })),
+  },
   
   updateConnectionStatus: (status, error) => set((state) => ({
     llm: {

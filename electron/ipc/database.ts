@@ -11,6 +11,7 @@ export function initializeDatabase(dbPath: string) {
       name TEXT NOT NULL,
       description TEXT,
       current_stage INTEGER DEFAULT 1,
+      current_cycle INTEGER DEFAULT 1,
       is_completed BOOLEAN DEFAULT 0,
       created_at INTEGER DEFAULT (strftime('%s', 'now')),
       updated_at INTEGER DEFAULT (strftime('%s', 'now')),
@@ -21,6 +22,7 @@ export function initializeDatabase(dbPath: string) {
       project_id TEXT NOT NULL,
       stage_number INTEGER NOT NULL,
       version INTEGER DEFAULT 1,
+      cycle INTEGER DEFAULT 1,
       content TEXT,
       questions TEXT,
       feedback TEXT,
@@ -59,6 +61,29 @@ export function initializeDatabase(dbPath: string) {
     CREATE INDEX IF NOT EXISTS idx_stage_data_lookup ON stage_data(project_id, stage_number);
     CREATE INDEX IF NOT EXISTS idx_exports_project ON exports(project_id, created_at DESC);
   `);
+
+  // Lightweight migrations for existing databases
+  try {
+    // Check if current_cycle column exists in projects
+    const projectsColumns = db.prepare("PRAGMA table_info(projects)").all() as any[];
+    if (!projectsColumns.some(col => col.name === 'current_cycle')) {
+      db.exec("ALTER TABLE projects ADD COLUMN current_cycle INTEGER DEFAULT 1");
+    }
+
+    // Check if cycle column exists in stage_data
+    let stageDataColumns = db.prepare("PRAGMA table_info(stage_data)").all() as any[];
+    if (!stageDataColumns.some(col => col.name === 'cycle')) {
+      db.exec("ALTER TABLE stage_data ADD COLUMN cycle INTEGER DEFAULT 1");
+      // Re-query after ALTER so list includes the new column
+      stageDataColumns = db.prepare("PRAGMA table_info(stage_data)").all() as any[];
+    }
+    if (stageDataColumns.some(col => col.name === 'cycle')) {
+      db.exec("CREATE INDEX IF NOT EXISTS idx_stage_data_cycle ON stage_data(project_id, cycle, stage_number, version)");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
   return db;
 }
 
@@ -73,7 +98,7 @@ export function createProject(data: any) {
 
 export function loadProject(id: string) {
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as any;
-  const stages = db.prepare('SELECT * FROM stage_data WHERE project_id = ? ORDER BY stage_number, version').all(id) as any[];
+  const stages = db.prepare('SELECT * FROM stage_data WHERE project_id = ? ORDER BY cycle, stage_number, version').all(id) as any[];
   const context = db.prepare('SELECT * FROM context WHERE project_id = ?').get(id) as any;
   return {
     ...project,
@@ -85,57 +110,98 @@ export function loadProject(id: string) {
 }
 
 export function saveStageData(data: any) {
+  // Determine target cycle (use provided cycle or get current from projects)
+  let targetCycle = data.cycle;
+  if (targetCycle === undefined) {
+    const projectRow = db
+      .prepare('SELECT current_cycle FROM projects WHERE id = ?')
+      .get(data.projectId) as any;
+    targetCycle = projectRow?.current_cycle ?? 1;
+  }
+
   // determine version: if caller supplies one, keep it; otherwise auto-increment
   let version = data.version;
   if (version === undefined) {
     const row = db
       .prepare(
-        'SELECT COALESCE(MAX(version),0)+1 AS nextVersion FROM stage_data WHERE project_id = ? AND stage_number = ?'
+        'SELECT COALESCE(MAX(version),0)+1 AS nextVersion FROM stage_data WHERE project_id = ? AND stage_number = ? AND cycle = ?'
       )
-      .get(data.projectId, data.stageNumber) as any;
+      .get(data.projectId, data.stageNumber, targetCycle) as any;
     version = row?.nextVersion ?? 1;
   }
 
   const id = uuidv4();
   db.prepare(
-    `INSERT INTO stage_data (id, project_id, stage_number, version, content, questions, feedback, is_accepted)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO stage_data (id, project_id, stage_number, version, cycle, content, questions, feedback, is_accepted)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.projectId,
     data.stageNumber,
     version,
+    targetCycle,
     JSON.stringify(data.content),
     JSON.stringify(data.questions ?? []),
     JSON.stringify(data.feedback ?? []),
     data.isAccepted ? 1 : 0
   );
 
-  db.prepare(
-    `UPDATE projects SET current_stage = ?, updated_at = strftime('%s', 'now') WHERE id = ?`
-  ).run(data.stageNumber, data.projectId);
+  /* -----------------------------------------------------------
+     Advance project.current_stage only when this version is
+     explicitly accepted. When accepted, move to the *next*
+     stage (clamped 1‥8). Draft / evaluation iterations leave
+     current_stage unchanged.
+  ----------------------------------------------------------- */
+  if (data.isAccepted) {
+    const nextStage = Math.min(8, Math.max(1, (data.stageNumber ?? 1) + 1));
+    db.prepare(
+      `UPDATE projects SET current_stage = ?, updated_at = strftime('%s', 'now') WHERE id = ?`
+    ).run(nextStage, data.projectId);
+  }
 
   return id;
 }
 
 export function listProjects() {
-  return db.prepare('SELECT id, name, description, current_stage, is_completed, created_at, updated_at FROM projects ORDER BY updated_at DESC').all();
+  return db.prepare('SELECT id, name, description, current_stage, current_cycle, is_completed, created_at, updated_at FROM projects ORDER BY updated_at DESC').all();
 }
 
 export function updateProject(id: string, data: any) {
-  const { name, description, current_stage, is_completed, settings } = data;
+  /* -----------------------------------------------------------
+     Load existing values first to ensure NOT NULL columns are
+     preserved when caller omits them.
+  ----------------------------------------------------------- */
+  const existing = db
+    .prepare(
+      'SELECT name, description, current_stage, current_cycle, is_completed, settings FROM projects WHERE id = ?'
+    )
+    .get(id) as any;
+
+  if (!existing) {
+    throw new Error(`Project not found: ${id}`);
+  }
+
+  const newName = data.name ?? existing.name;
+  const newDescription = data.description ?? existing.description;
+  const newStage = data.current_stage ?? existing.current_stage;
+  const newCycle = data.current_cycle ?? existing.current_cycle;
+  const newCompleted =
+    data.is_completed === undefined
+      ? existing.is_completed
+      : data.is_completed
+      ? 1
+      : 0;
+  const newSettings =
+    data.settings !== undefined
+      ? JSON.stringify(data.settings)
+      : existing.settings;
+
   db.prepare(`
-    UPDATE projects 
-    SET name = ?, description = ?, current_stage = ?, is_completed = ?, settings = ?, updated_at = strftime('%s', 'now')
+    UPDATE projects
+    SET name = ?, description = ?, current_stage = ?, current_cycle = ?, is_completed = ?, settings = ?, updated_at = strftime('%s', 'now')
     WHERE id = ?
-  `).run(
-    name, 
-    description, 
-    current_stage ?? (db.prepare('SELECT current_stage FROM projects WHERE id = ?').get(id) as any)?.current_stage, 
-    is_completed ? 1 : 0, 
-    settings ? JSON.stringify(settings) : (db.prepare('SELECT settings FROM projects WHERE id = ?').get(id) as any)?.settings,
-    id
-  );
+  `).run(newName, newDescription, newStage, newCycle, newCompleted, newSettings, id);
+
   return loadProject(id);
 }
 

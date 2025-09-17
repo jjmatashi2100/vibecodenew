@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useProjectStore } from '../../stores/project';
+import { StageShell } from './StageShell';
 
 export function Stage8Export() {
   const { currentProject, stageData } = useProjectStore();
@@ -229,6 +230,19 @@ ${data.stages[7] ? data.stages[7] : 'No task plan available yet.'}
 
   return (
     <div className="space-y-6">
+      {/* StageShell handles Generate / Evaluate / Optimize / Accept for Stage 8 */}
+      <StageShell
+        stageId={8}
+        title="Export Specification"
+        inputLabel="Export format preferences (optional)"
+        inputKey="format"
+        placeholder="Examples: Markdown optimized for Cursor; include code blocks; concise sections; or XML-style tags for Claude."
+        editorHeight="500px"
+      />
+
+      {/* spacer between StageShell and custom export panel */}
+      <div className="h-4" />
+
       <div className="bg-gray-700 rounded-lg p-6">
         <h2 className="text-2xl font-bold text-white mb-4">
           Stage 8: Export

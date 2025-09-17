@@ -4,11 +4,11 @@ import { ipcMain } from 'electron';
    Helper to enforce both an overall timeout and an inactivity timeout
    on fetch streams.
    Defaults:
-     • inactivityMs – 45 000 ms  (no chunk within 45 s ⇒ abort)
+     • inactivityMs – 120 000 ms  (no chunk within 120 s ⇒ abort)
      • overallMs    – 240 000 ms (total request > 4 min ⇒ abort)
 -------------------------------------------------------------------*/
-function createAbortGuards(inactivityMs = 45_000, overallMs = 240_000) {
-  const controller = new AbortController();
+function createAbortGuards(inactivityMs = 120_000, overallMs = 240_000, externalController?: AbortController) {
+  const controller = externalController ?? new AbortController();
   let inactivityTimer: NodeJS.Timeout | null = null;
 
   const startInactivity = () => {
@@ -48,7 +48,7 @@ class OllamaProvider implements LLMProvider {
   }
   
   async *generate(prompt: string, options: any = {}): AsyncGenerator<string, void, unknown> {
-    const guards = createAbortGuards();
+    const guards = createAbortGuards(options.inactivityMs, options.overallMs, options.abortController);
     try {
       const res = await fetch(`${this.endpoint}/api/generate`, {
         method: 'POST',
@@ -60,7 +60,7 @@ class OllamaProvider implements LLMProvider {
           stream: true,
           options: {
             temperature: options.temperature ?? 0.3,
-            num_predict: options.maxTokens ?? 700,
+            num_predict: (options.unbounded ? -1 : (options.maxTokens ?? 700)),
           },
         }),
       });
@@ -90,7 +90,7 @@ class OllamaProvider implements LLMProvider {
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        throw new Error('LLM stream stalled (no data for 15 s)');
+        throw new Error('LLM stream stalled (no data for 120 s)');
       }
       throw err;
     } finally {
@@ -126,7 +126,7 @@ class LMStudioProvider implements LLMProvider {
     const model = options.model;
     if (!model) throw new Error('No model selected');
 
-    const guards = createAbortGuards();
+    const guards = createAbortGuards(options.inactivityMs, options.overallMs, options.abortController);
 
     // helper to stream SSE payloads
     const streamResponse = async function* (
@@ -172,7 +172,9 @@ class LMStudioProvider implements LLMProvider {
         body: JSON.stringify({
           model,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: options.maxTokens ?? 700,
+          max_tokens: options.unbounded
+            ? (options.maxTokens ?? 4096)
+            : (options.maxTokens ?? 700),
           temperature: options.temperature ?? 0.3,
           stream: true
         })
@@ -185,7 +187,7 @@ class LMStudioProvider implements LLMProvider {
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         guards.clear();
-        throw new Error('LLM stream stalled (no data for 15 s)');
+        throw new Error('LLM stream stalled (no data for 120 s)');
       }
       /* fall through to completions */
     }
@@ -199,7 +201,9 @@ class LMStudioProvider implements LLMProvider {
         body: JSON.stringify({
           model,
           prompt,
-          max_tokens: options.maxTokens ?? 700,
+          max_tokens: options.unbounded
+            ? (options.maxTokens ?? 4096)
+            : (options.maxTokens ?? 700),
           temperature: options.temperature ?? 0.3,
           stream: true
         })
@@ -213,7 +217,7 @@ class LMStudioProvider implements LLMProvider {
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        throw new Error('LLM stream stalled (no data for 15 s)');
+        throw new Error('LLM stream stalled (no data for 120 s)');
       }
       throw err;
     } finally {
@@ -306,6 +310,12 @@ class LLMManager {
 
 const llmManager = new LLMManager();
 
+/* -------------------------------------------------------------
+   Track AbortControllers keyed by renderer-generated channel so
+   we can cancel from the UI.
+------------------------------------------------------------- */
+const requestControllers = new Map<string, AbortController>();
+
 export function setupLLMHandlers() {
   ipcMain.handle('llm:check', async () => llmManager.detectAndConnect());
   
@@ -324,6 +334,12 @@ export function setupLLMHandlers() {
   });
   
   ipcMain.on('llm:generate', async (event, { prompt, options, channel }) => {
+    // Create controller & expose for cancellation
+    const controller = new AbortController();
+    requestControllers.set(channel, controller);
+    // Inject into options so providers share the same signal
+    options = { ...options, abortController: controller };
+
     let sentAny = false;
     try {
       for await (const chunk of llmManager.generate(prompt, options)) {
@@ -332,13 +348,28 @@ export function setupLLMHandlers() {
       }
       event.reply(channel, { done: true });
     } catch (e: any) {
+      const wasCanceled = controller.signal.aborted;
       const msg = typeof e?.message === 'string' ? e.message : '';
-      if (sentAny && msg.includes('stalled')) {
+      if (wasCanceled) {
+        event.reply(channel, { canceled: true });
+      } else if (sentAny && msg.includes('stalled')) {
         // Treat stall after partial output as graceful end
         event.reply(channel, { done: true });
       } else {
         event.reply(channel, { error: msg || 'LLM error' });
       }
+    } finally {
+      requestControllers.delete(channel);
+      controller.abort(); // ensure cleanup
+    }
+  });
+  
+  /* ------------------ Cancel in-flight generation ------------------ */
+  ipcMain.on('llm:cancel', (_event, channel: string) => {
+    const ctrl = requestControllers.get(channel);
+    if (ctrl) {
+      ctrl.abort();
+      requestControllers.delete(channel);
     }
   });
 }
