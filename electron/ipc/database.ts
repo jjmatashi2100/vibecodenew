@@ -71,12 +71,12 @@ export function initializeDatabase(dbPath: string) {
     }
 
     // Check if cycle column exists in stage_data
-    const stageDataColumns = db.prepare("PRAGMA table_info(stage_data)").all() as any[];
+    let stageDataColumns = db.prepare("PRAGMA table_info(stage_data)").all() as any[];
     if (!stageDataColumns.some(col => col.name === 'cycle')) {
       db.exec("ALTER TABLE stage_data ADD COLUMN cycle INTEGER DEFAULT 1");
+      // Re-query after ALTER so list includes the new column
+      stageDataColumns = db.prepare("PRAGMA table_info(stage_data)").all() as any[];
     }
-
-    // Now that we are sure the cycle column exists, create the index
     if (stageDataColumns.some(col => col.name === 'cycle')) {
       db.exec("CREATE INDEX IF NOT EXISTS idx_stage_data_cycle ON stage_data(project_id, cycle, stage_number, version)");
     }
