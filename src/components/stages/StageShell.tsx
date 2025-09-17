@@ -4,6 +4,15 @@ import { QuestionPanel } from '../common/QuestionPanel';
 import { useProjectStore } from '../../stores/project';
 import { useAppStore } from '../../stores/app';
 import { STAGE_PROMPTS } from '../../utils/prompts';
+import {
+  getRequiredContext,
+  summarizeContext,
+} from '../../utils/dependencies';
+import { adaptPromptForModel } from '../../utils/promptUtils';
+import {
+  validateStageOutput,
+  ValidationResult,
+} from '../../utils/validators';
 
 interface StageShellProps {
   stageId: number;
@@ -42,6 +51,7 @@ export function StageShell({
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [evalResult, setEvalResult] = useState<any | null>(null);
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
   // Derived busy state
   const isBusy = isGenerating || isEvaluating || isOptimizing;
 
@@ -168,6 +178,22 @@ ${lastChunk}`;
   }, [currentProject?.id, currentCycle, stageId]);
 
   /* ------------------------------------------------------------------
+     Validate output whenever it changes
+  -------------------------------------------------------------------*/
+  useEffect(() => {
+    if (!output?.trim()) {
+      setValidation(null);
+      return;
+    }
+    const parsed = parseJsonStrict(output);
+    if (!parsed) {
+      setValidation({ valid: false, issues: ['Output is not valid JSON'] });
+      return;
+    }
+    setValidation(validateStageOutput(stageId, parsed));
+  }, [output, stageId]);
+
+  /* ------------------------------------------------------------------
      Autosave every 10 s whenever input/output change
   -------------------------------------------------------------------*/
   useEffect(() => {
@@ -207,8 +233,21 @@ ${lastChunk}`;
     setIsGenerating(true);
     setOutput('');
     
-    const context = getContextForStage(stageId);
-    const prompt = prompts.initial(inputValue, context);
+    const fullContext = getContextForStage(stageId);
+    const requiredPrev = getRequiredContext(
+      stageId,
+      fullContext?.previousStages
+    );
+    const contextForPrompt = {
+      ...fullContext,
+      previousStages: requiredPrev,
+      summary: summarizeContext(requiredPrev),
+    };
+
+    const prompt = adaptPromptForModel(
+      prompts.initial(inputValue, contextForPrompt),
+      llm.selectedModel?.id
+    );
     // Per-stage initial generation budget
     const initialTokenBudget =
       stageId === 1 ? 2500 : stageId === 3 ? 2200 : 900;
@@ -311,7 +350,11 @@ ${lastChunk}`;
     setEvalResult(null);
     try {
       const prompt = prompts.evaluate(output);
-      const res: any = await (window as any).electronAPI.generateContent(prompt, {
+      const wrappedPrompt = adaptPromptForModel(
+        prompt,
+        llm.selectedModel?.id
+      );
+      const res: any = await (window as any).electronAPI.generateContent(wrappedPrompt, {
         model: llm.selectedModel?.id,
         temperature: 0,
         maxTokens: 600,
@@ -362,7 +405,12 @@ ${lastChunk}`;
     if (!evalResult?.deltas) return;
     setIsOptimizing(true);
     try {
-      const prompt = prompts.optimize(output, evalResult.deltas);
+      const score =
+        evalResult?.computed_score ?? evalResult?.raw_score ?? 0;
+      const prompt = adaptPromptForModel(
+        prompts.optimize(output, evalResult.deltas, score),
+        llm.selectedModel?.id
+      );
       const improved = await (window as any).electronAPI.generateContent(prompt, {
         model: llm.selectedModel?.id,
         temperature: 0.3,
@@ -473,9 +521,9 @@ ${lastChunk}`;
 
           <button
             onClick={() => acceptStage(stageId, output)}
-            disabled={accepted || !output || !isLatestCycle}
+            disabled={accepted || !output || !isLatestCycle || validation?.valid === false}
             className={`px-4 py-1 text-sm rounded-md ${
-              accepted || !output || !isLatestCycle
+              accepted || !output || !isLatestCycle || validation?.valid === false
                 ? 'bg-green-800 text-white cursor-not-allowed'
                 : 'bg-green-600 text-white hover:bg-green-700'
             }`}
@@ -552,6 +600,28 @@ ${lastChunk}`;
             height={editorHeight}
             readOnly={!isLatestCycle}
           />
+          
+          {/* Validation Status Panel */}
+          {validation && (
+            <div className={`mt-2 p-2 rounded ${
+              validation.valid 
+                ? 'bg-green-700/30 border border-green-600' 
+                : 'bg-red-700/30 border border-red-600'
+            }`}>
+              {validation.valid ? (
+                <p className="text-green-400 text-sm font-medium">Validation passed</p>
+              ) : (
+                <div>
+                  <p className="text-red-400 text-sm font-medium mb-1">Validation failed:</p>
+                  <ul className="list-disc pl-5 text-red-300 text-sm">
+                    {validation.issues.map((issue, i) => (
+                      <li key={i}>{issue}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
       
@@ -633,9 +703,9 @@ ${lastChunk}`;
           {isLatestCycle && (
             <button
               onClick={() => acceptStage(stageId, output)}
-              disabled={accepted || !isLatestCycle}
+              disabled={accepted || !isLatestCycle || validation?.valid === false}
               className={`px-6 py-2 rounded-md ${
-                accepted || !isLatestCycle
+                accepted || !isLatestCycle || validation?.valid === false
                   ? 'bg-green-800 text-white cursor-not-allowed'
                   : 'bg-green-600 text-white hover:bg-green-700'
               }`}
