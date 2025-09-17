@@ -45,7 +45,7 @@ export function Sidebar({ stages, currentStage }: any) {
             {(() => {
               const score = getStageScore(s.id);
               return score !== null ? (
-                <span className="text-xxs font-semibold px-1.5 py-0.5 rounded bg-purple-700 text-purple-100">
+                <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-purple-700 text-purple-100">
                   {score}
                 </span>
               ) : null;
