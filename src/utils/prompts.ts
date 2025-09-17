@@ -773,5 +773,45 @@ ${questionsAndAnswers}
 
 Generate an improved project specification in structured JSON format.`;
     }
+
+    ,
+
+    /**
+     * Evaluator prompt for Stage 8: assesses the final export document
+     */
+    evaluate: (current: string): string => `
+You are a senior technical writer and editor. Critically evaluate the following PROJECT SPECIFICATION.
+
+Return STRICT JSON ONLY — **no prose outside the JSON**.  
+Schema (sum of \`weight\` fields MUST equal **100**; adjust the last item if necessary):
+{
+  "raw_score": 0-100,
+  "summary": "<one-sentence verdict>",
+  "checklist": [
+    { "criterion": "<e.g., completeness>", "pass": true|false, "weight": 5-20, "notes": "<why/what's missing>" }
+  ],
+  "deltas": [
+    { "target": "<section>", "action": "add"|"edit"|"remove", "detail": "<improvement>" }
+  ]
+}
+
+PROJECT SPECIFICATION:
+${current}
+`,
+
+    /**
+     * Optimizer prompt for Stage 8 – applies deltas to improve the export document
+     */
+    optimize: (current: string, deltas: any[]): string => `
+You are refining a comprehensive project specification document. Apply the provided deltas.
+
+Current document:
+${current}
+
+Deltas:
+${JSON.stringify(deltas, null, 2)}
+
+Return ONLY the improved project specification (markdown/JSON) with the same structure, no additional commentary.
+`
   }
 };
