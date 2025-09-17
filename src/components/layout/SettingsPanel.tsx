@@ -12,12 +12,17 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [overallTimeout, setOverallTimeout] = useState(
     Math.floor((llm.params.overallMs || 240_000) / 1000)
   );
+  // Minimum MVP features
+  const [minFeatures, setMinFeatures] = useState(
+    llm.params.minMVPFeatures ?? 3
+  );
 
   // Update local state when store changes
   useEffect(() => {
     setUnbounded(llm.params.unbounded || false);
     setInactivityTimeout(Math.floor((llm.params.inactivityMs || 120_000) / 1000));
     setOverallTimeout(Math.floor((llm.params.overallMs || 240_000) / 1000));
+    setMinFeatures(llm.params.minMVPFeatures ?? 3);
   }, [llm.params]);
 
   const handleSave = () => {
@@ -26,6 +31,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       unbounded,
       inactivityMs: inactivityTimeout * 1000,
       overallMs: overallTimeout * 1000,
+      minMVPFeatures: minFeatures,
     });
     onClose();
   };
@@ -72,6 +78,25 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
             </p>
           </div>
           
+          {/* Minimum MVP features */}
+          <div>
+            <label htmlFor="minfeatures" className="block text-sm font-medium text-gray-300 mb-1">
+              Minimum MVP features
+            </label>
+            <input
+              type="number"
+              id="minfeatures"
+              min="1"
+              max="10"
+              value={minFeatures}
+              onChange={(e) => setMinFeatures(Math.min(10, Math.max(1, parseInt(e.target.value) || 3)))}
+              className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:border-blue-500 focus:outline-none"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Validator will require at least this many core features (1-10)
+            </p>
+          </div>
+
           {/* Overall timeout */}
           <div>
             <label htmlFor="overall" className="block text-sm font-medium text-gray-300 mb-1">

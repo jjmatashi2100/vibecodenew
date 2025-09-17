@@ -50,10 +50,11 @@ export function StageShell({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [isEnsuringFeatures, setIsEnsuringFeatures] = useState(false);
   const [evalResult, setEvalResult] = useState<any | null>(null);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   // Derived busy state
-  const isBusy = isGenerating || isEvaluating || isOptimizing;
+  const isBusy = isGenerating || isEvaluating || isOptimizing || isEnsuringFeatures;
 
   // Store access
   const {
@@ -149,6 +150,88 @@ ${lastChunk}`;
   }
 
   /* ------------------------------------------------------------------
+     Ensure minimum number of features for Stage 1
+  -------------------------------------------------------------------*/
+  async function ensureMinFeatures() {
+    if (stageId !== 1 || !output) return;
+    
+    setIsEnsuringFeatures(true);
+    
+    try {
+      const parsed = parseJsonStrict(output);
+      if (!parsed) return;
+      
+      const min = llm.params.minMVPFeatures || 3;
+      
+      // Find features path (same logic as validator)
+      const candidatePaths = [
+        'mvp_features',
+        'features',
+        'core_features',
+        'mvp.core_features'
+      ];
+      
+      const addFeaturesPrompt = `You are standardizing an MVP plan to ensure it has at least ${min} core features.
+
+Current MVP plan:
+${output}
+
+App concept: ${inputValue}
+
+Your task:
+1. Identify all existing features in the MVP plan
+2. Standardize them into the "mvp_features" array format with name, description, user_story, and acceptance_criteria
+3. If there are fewer than ${min} features, add more relevant features based on the app concept
+4. Preserve all other content from the original plan (elevator pitch, problem statement, etc.)
+5. Return the complete MVP plan as STRICT JSON only
+
+The output must have at least ${min} items in the mvp_features array.`;
+
+      const result = await (window as any).electronAPI.generateContent(adaptPromptForModel(addFeaturesPrompt, llm.selectedModel?.id), {
+        model: llm.selectedModel?.id,
+        temperature: 0.3,
+        maxTokens: 900,
+        inactivityMs: llm.params.inactivityMs,
+        overallMs: llm.params.overallMs,
+        unbounded: llm.params.unbounded,
+      });
+      
+      if (typeof result === 'string') {
+        let aggregate = result;
+        
+        // Auto-continue if the JSON is incomplete
+        if (isIncompleteJson(aggregate)) {
+          // Try up to 2 continuation passes
+          for (let pass = 0; pass < 2; pass++) {
+            if (!isIncompleteJson(aggregate)) break; // Stop if we have valid JSON
+            
+            const continuation = await continueJson(aggregate, 900);
+            if (!continuation) break; // Stop if continuation failed
+            
+            aggregate += continuation;
+            
+            // If we got valid JSON, stop continuing
+            if (!isIncompleteJson(aggregate)) break;
+          }
+        }
+        
+        setOutput(aggregate);
+        setEvalResult(null);
+        
+        // Save to database
+        await saveStageData(stageId, {
+          content: aggregate,
+          cycle: currentCycle
+        });
+      }
+    } catch (error) {
+      console.error('Ensure features error:', error);
+    } finally {
+      setIsEnsuringFeatures(false);
+    }
+  }
+
+  /* ------------------------------------------------------------------
      Hydrate input / output from autosave on mount or project/cycle change
   -------------------------------------------------------------------*/
   useEffect(() => {
@@ -190,8 +273,8 @@ ${lastChunk}`;
       setValidation({ valid: false, issues: ['Output is not valid JSON'] });
       return;
     }
-    setValidation(validateStageOutput(stageId, parsed));
-  }, [output, stageId]);
+    setValidation(validateStageOutput(stageId, parsed, { minMVPFeatures: llm.params.minMVPFeatures || 3 }));
+  }, [output, stageId, llm.params.minMVPFeatures]);
 
   /* ------------------------------------------------------------------
      Autosave every 10 s whenever input/output change
@@ -343,6 +426,7 @@ ${lastChunk}`;
     setIsGenerating(false);
     setIsEvaluating(false);
     setIsOptimizing(false);
+    setIsEnsuringFeatures(false);
   }
   async function evaluateOutput() {
     if (!output) return;
@@ -509,6 +593,16 @@ ${lastChunk}`;
           >
             {isOptimizing ? 'Optimizing…' : 'Optimize'}
           </button>
+
+          {stageId === 1 && isLatestCycle && (
+            <button
+              onClick={ensureMinFeatures}
+              disabled={!output || isEnsuringFeatures || !isLatestCycle}
+              className="px-4 py-1 text-sm rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+            >
+              {isEnsuringFeatures ? 'Adding Features…' : 'Ensure Min Features'}
+            </button>
+          )}
 
           {isBusy && isLatestCycle && (
             <button

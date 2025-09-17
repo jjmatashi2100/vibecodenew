@@ -106,7 +106,10 @@ function hasAnyProperty(obj: any, propPaths: string[]): boolean {
  */
 export const STAGE_VALIDATORS = {
   stage1: {
-    validate: (output: any): ValidationResult => {
+    validate: (
+      output: any,
+      options?: { minMVPFeatures?: number }
+    ): ValidationResult => {
       const issues: string[] = [];
       
       // Handle null/undefined output
@@ -115,6 +118,7 @@ export const STAGE_VALIDATORS = {
       }
       
       // Check MVP features (minimum 3) with robust counting
+      const min = options?.minMVPFeatures ?? 3;
       const candidatePaths = [
         'mvp_features',
         'features',
@@ -128,8 +132,8 @@ export const STAGE_VALIDATORS = {
       } else {
         const value = getPropertyValue(output, featuresPath);
         const count = countListLike(value);
-        if (count < 3) {
-          issues.push("MVP must have at least 3 core features");
+        if (count < min) {
+          issues.push(`MVP must have at least ${min} core features`);
         }
       }
       
@@ -367,9 +371,14 @@ export const STAGE_VALIDATORS = {
  * Validates output for a specific stage
  * @param stageId Stage number (1-8)
  * @param output The output to validate (already parsed JSON)
+ * @param options Optional per-stage validation overrides
  * @returns Validation result with valid flag and issues
  */
-export function validateStageOutput(stageId: number, output: any): ValidationResult {
+export function validateStageOutput(
+  stageId: number,
+  output: any,
+  options?: { minMVPFeatures?: number }
+): ValidationResult {
   // Default validation result
   const defaultResult: ValidationResult = { 
     valid: true, 
@@ -392,7 +401,7 @@ export function validateStageOutput(stageId: number, output: any): ValidationRes
   
   // Run the stage-specific validator
   try {
-    return validator.validate(output);
+    return validator.validate(output, options);
   } catch (error) {
     // If validation throws an error, return invalid with error message
     return { 

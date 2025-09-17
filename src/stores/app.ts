@@ -24,6 +24,8 @@ interface LLMParams {
   inactivityMs?: number;
   /** Abort the whole request after this many ms */
   overallMs?: number;
+  /** Minimum number of core features required for Stage 1 validation */
+  minMVPFeatures?: number;
 }
 
 interface LLMConfig {
@@ -58,6 +60,7 @@ const defaultLLMParams: LLMParams = {
   unbounded: false,
   inactivityMs: 120_000,
   overallMs: 240_000,
+  minMVPFeatures: 3,
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
