@@ -4,10 +4,10 @@ import { ipcMain } from 'electron';
    Helper to enforce both an overall timeout and an inactivity timeout
    on fetch streams.
    Defaults:
-     • inactivityMs – 45 000 ms  (no chunk within 45 s ⇒ abort)
+     • inactivityMs – 120 000 ms  (no chunk within 120 s ⇒ abort)
      • overallMs    – 240 000 ms (total request > 4 min ⇒ abort)
 -------------------------------------------------------------------*/
-function createAbortGuards(inactivityMs = 45_000, overallMs = 240_000) {
+function createAbortGuards(inactivityMs = 120_000, overallMs = 240_000) {
   const controller = new AbortController();
   let inactivityTimer: NodeJS.Timeout | null = null;
 
@@ -90,7 +90,7 @@ class OllamaProvider implements LLMProvider {
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        throw new Error('LLM stream stalled (no data for 15 s)');
+        throw new Error('LLM stream stalled (no data for 120 s)');
       }
       throw err;
     } finally {
@@ -185,7 +185,7 @@ class LMStudioProvider implements LLMProvider {
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         guards.clear();
-        throw new Error('LLM stream stalled (no data for 15 s)');
+        throw new Error('LLM stream stalled (no data for 120 s)');
       }
       /* fall through to completions */
     }
@@ -213,7 +213,7 @@ class LMStudioProvider implements LLMProvider {
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        throw new Error('LLM stream stalled (no data for 15 s)');
+        throw new Error('LLM stream stalled (no data for 120 s)');
       }
       throw err;
     } finally {
