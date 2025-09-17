@@ -320,10 +320,34 @@ ${lastChunk}`;
       });
       const parsed = typeof res === 'string' ? parseJsonStrict(res) : null;
       if (parsed) {
-        setEvalResult(parsed);
-        await saveStageData(stageId, { 
-          content: output, 
-          feedback: parsed,
+        /* ---------------------------------------------
+           Derive deterministic computed_score from rubric
+        ----------------------------------------------*/
+        const items = Array.isArray(parsed.checklist) ? parsed.checklist : [];
+        let totalWeight = 0;
+        let passWeight = 0;
+        for (const it of items) {
+          const w = typeof it?.weight === 'number' && it.weight > 0 ? it.weight : 1;
+          totalWeight += w;
+          if (it.pass === true) passWeight += w;
+        }
+        if (totalWeight === 0) {
+          totalWeight = items.length || 1;
+        }
+        const computedScore =
+          totalWeight > 0 ? Math.round((passWeight / totalWeight) * 100) : undefined;
+
+        const feedback = {
+          ...parsed,
+          raw_score: parsed.raw_score ?? parsed.score,
+          computed_score: computedScore,
+        };
+
+        setEvalResult(feedback);
+
+        await saveStageData(stageId, {
+          content: output,
+          feedback,
           cycle: currentCycle
         });
       }
@@ -564,7 +588,7 @@ ${lastChunk}`;
           {evalResult && (
             <div className="bg-gray-700 rounded-lg p-4">
               <h4 className="text-lg font-semibold text-white mb-2">
-                Evaluation Result (Score: {evalResult.score})
+                Evaluation Result (Score: {evalResult.computed_score ?? evalResult.raw_score ?? evalResult.score})
               </h4>
               {evalResult.summary && (
                 <p className="text-white mb-3">{evalResult.summary}</p>

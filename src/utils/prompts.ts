@@ -92,17 +92,18 @@ Format as structured JSON with clear sections.`;
      * @param current Current MVP plan
      */
     evaluate: (current: string): string => `
-You are a senior product analyst. Evaluate the following MVP plan.
+You are a senior product analyst. Evaluate the MVP plan below.
 
-Return STRICT JSON ONLY with this shape – no prose outside of the JSON block:
+Return STRICT JSON ONLY — **no prose outside the JSON**.  
+Schema (sum of \`weight\` fields MUST equal **100**; adjust the last item if necessary):
 {
-  "score": 0-100,
-  "summary": "<one-sentence evaluation>",
+  "raw_score": 0-100,
+  "summary": "<one-sentence verdict>",
   "checklist": [
-    { "criterion": "<short name>", "pass": true|false, "notes": "<why>" }
+    { "criterion": "<short name>", "pass": true|false, "weight": 5-20, "notes": "<why>" }
   ],
   "deltas": [
-    { "target": "<section or feature>", "action": "add"|"edit"|"remove", "detail": "<what to change>" }
+    { "target": "<section|feature>", "action": "add"|"edit"|"remove", "detail": "<improvement>" }
   ]
 }
 
@@ -222,12 +223,13 @@ Format as structured JSON with clear sections.`;
     evaluate: (current: string): string => `
 You are a principal architect. Critically evaluate the following technical architecture.
 
-Respond with STRICT JSON ONLY:
+Respond with STRICT JSON ONLY — **no prose outside the JSON**.  
+Schema (sum of \`weight\` fields MUST equal **100**; adjust the last item if necessary):
 {
-  "score": 0-100,
+  "raw_score": 0-100,
   "summary": "<one-sentence verdict>",
   "checklist": [
-    { "criterion": "<e.g., scalability>", "pass": true|false, "notes": "<why/what's missing>" }
+    { "criterion": "<e.g., scalability>", "pass": true|false, "weight": 5-20, "notes": "<why/what's missing>" }
   ],
   "deltas": [
     { "target": "<component/section>", "action": "add"|"edit"|"remove", "detail": "<fix>" }
@@ -316,12 +318,13 @@ Generate improved user flows in structured JSON format.`;
     evaluate: (current: string): string => `
 You are a lead UX researcher. Critically evaluate the following USER FLOWS.
 
-Respond with STRICT JSON ONLY:
+Respond with STRICT JSON ONLY — **no prose outside the JSON**.  
+Schema (sum of \`weight\` fields MUST equal **100**; adjust the last item if necessary):
 {
-  "score": 0-100,
+  "raw_score": 0-100,
   "summary": "<one-sentence verdict>",
   "checklist": [
-    { "criterion": "<e.g., completeness>", "pass": true|false, "notes": "<why/what's missing>" }
+    { "criterion": "<e.g., completeness>", "pass": true|false, "weight": 5-20, "notes": "<why/what's missing>" }
   ],
   "deltas": [
     { "target": "<flow/section>", "action": "add"|"edit"|"remove", "detail": "<fix>" }
@@ -407,12 +410,13 @@ Generate an improved style guide in structured JSON format.`;
     evaluate: (current: string): string => `
 You are a senior UI designer. Evaluate the following STYLE GUIDE.
 
-Return STRICT JSON ONLY:
+Return STRICT JSON ONLY — **no prose outside the JSON**.  
+Schema (sum of \`weight\` fields MUST equal **100**; adjust the last item if necessary):
 {
-  "score": 0-100,
+  "raw_score": 0-100,
   "summary": "<one-sentence verdict>",
   "checklist": [
-    { "criterion": "<e.g., accessibility>", "pass": true|false, "notes": "<why>" }
+    { "criterion": "<e.g., accessibility>", "pass": true|false, "weight": 5-20, "notes": "<why>" }
   ],
   "deltas": [
     { "target": "<section>", "action": "add"|"edit"|"remove", "detail": "<improvement>" }
@@ -499,12 +503,13 @@ Generate an improved technical specification in structured JSON format.`;
     evaluate: (current: string): string => `
 You are a chief engineer. Evaluate the following TECHNICAL SPECIFICATION.
 
-Respond with STRICT JSON ONLY:
+Respond with STRICT JSON ONLY — **no prose outside the JSON**.  
+Schema (sum of \`weight\` fields MUST equal **100**; adjust the last item if necessary):
 {
-  "score": 0-100,
+  "raw_score": 0-100,
   "summary": "<one-sentence verdict>",
   "checklist": [
-    { "criterion": "<e.g., API completeness>", "pass": true|false, "notes": "<detail>" }
+    { "criterion": "<e.g., API completeness>", "pass": true|false, "weight": 5-20, "notes": "<detail>" }
   ],
   "deltas": [
     { "target": "<section>", "action": "add"|"edit"|"remove", "detail": "<fix>" }
@@ -591,12 +596,13 @@ Generate an improved data architecture in structured JSON format.`;
     evaluate: (current: string): string => `
 You are a senior data architect. Evaluate the following DATA ARCHITECTURE.
 
-Return STRICT JSON ONLY:
+Return STRICT JSON ONLY — **no prose outside the JSON**.  
+Schema (sum of \`weight\` fields MUST equal **100**; adjust the last item if necessary):
 {
-  "score": 0-100,
+  "raw_score": 0-100,
   "summary": "<one-sentence verdict>",
   "checklist": [
-    { "criterion": "<e.g., normalization>", "pass": true|false, "notes": "<detail>" }
+    { "criterion": "<e.g., normalization>", "pass": true|false, "weight": 5-20, "notes": "<detail>" }
   ],
   "deltas": [
     { "target": "<table/flow>", "action": "add"|"edit"|"remove", "detail": "<improvement>" }
@@ -682,12 +688,13 @@ Generate an improved task plan in structured JSON format.`;
     evaluate: (current: string): string => `
 You are a programme manager. Evaluate the following TASK PLAN.
 
-Provide STRICT JSON ONLY:
+Provide STRICT JSON ONLY — **no prose outside the JSON**.  
+Schema (sum of \`weight\` fields MUST equal **100**; adjust the last item if necessary):
 {
-  "score": 0-100,
+  "raw_score": 0-100,
   "summary": "<one-sentence verdict>",
   "checklist": [
-    { "criterion": "<e.g., dependency logic>", "pass": true|false, "notes": "<why>" }
+    { "criterion": "<e.g., dependency logic>", "pass": true|false, "weight": 5-20, "notes": "<why>" }
   ],
   "deltas": [
     { "target": "<task/phase>", "action": "add"|"edit"|"remove", "detail": "<improve>" }

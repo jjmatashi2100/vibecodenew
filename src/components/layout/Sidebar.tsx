@@ -22,8 +22,12 @@ export function Sidebar({ stages, currentStage }: any) {
       if (fbRaw) {
         try {
           const parsed = JSON.parse(fbRaw);
-          if (parsed && typeof parsed.score === 'number') {
-            return parsed.score;
+          if (parsed) {
+            const val =
+              parsed.computed_score ?? parsed.raw_score ?? parsed.score;
+            if (typeof val === 'number' && Number.isFinite(val)) {
+              return val;
+            }
           }
         } catch {
           /* ignore parse errors */
