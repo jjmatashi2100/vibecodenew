@@ -59,7 +59,6 @@ export function initializeDatabase(dbPath: string) {
     );
     CREATE INDEX IF NOT EXISTS idx_projects_updated ON projects(updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_stage_data_lookup ON stage_data(project_id, stage_number);
-    CREATE INDEX IF NOT EXISTS idx_stage_data_cycle ON stage_data(project_id, cycle, stage_number, version);
     CREATE INDEX IF NOT EXISTS idx_exports_project ON exports(project_id, created_at DESC);
   `);
 
@@ -75,6 +74,11 @@ export function initializeDatabase(dbPath: string) {
     const stageDataColumns = db.prepare("PRAGMA table_info(stage_data)").all() as any[];
     if (!stageDataColumns.some(col => col.name === 'cycle')) {
       db.exec("ALTER TABLE stage_data ADD COLUMN cycle INTEGER DEFAULT 1");
+    }
+
+    // Now that we are sure the cycle column exists, create the index
+    if (stageDataColumns.some(col => col.name === 'cycle')) {
+      db.exec("CREATE INDEX IF NOT EXISTS idx_stage_data_cycle ON stage_data(project_id, cycle, stage_number, version)");
     }
   } catch (e) {
     console.error("Migration error:", e);
