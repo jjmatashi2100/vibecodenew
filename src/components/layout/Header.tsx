@@ -17,7 +17,26 @@ export function Header() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Current project info
-  const { currentProject } = useProjectStore();
+  const {
+    currentProject,
+    currentCycle,
+    setCycle,
+    startNewCycle,
+    isStageAccepted,
+  } = useProjectStore();
+
+  /* ------------------ Cycle helpers ------------------ */
+  const maxCycle = Math.max(
+    currentProject?.current_cycle || 1,
+    ...(currentProject?.stages?.map((r: any) => r.cycle) || [1])
+  );
+
+  const allStagesAccepted =
+    [1, 2, 3, 4, 5, 6, 7].every((s) => isStageAccepted(s));
+
+  const canStartNewCycle =
+    allStagesAccepted &&
+    currentCycle === (currentProject?.current_cycle ?? currentCycle);
 
   const handleModelChange = (
     e: React.ChangeEvent<HTMLSelectElement>
@@ -45,6 +64,25 @@ export function Header() {
         ) : null}
       </div>
       <div className="flex items-center space-x-2">
+        {/* Cycle selector */}
+        <div className="flex items-center space-x-1">
+          <label htmlFor="cycleSel" className="text-xs text-gray-300">
+            Cycle
+          </label>
+          <select
+            id="cycleSel"
+            value={currentCycle}
+            onChange={(e) => setCycle(parseInt(e.target.value, 10))}
+            className="bg-gray-700 text-sm text-gray-200 rounded px-2 py-1"
+          >
+            {Array.from({ length: maxCycle }, (_, i) => i + 1).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Provider selector */}
         <select
           value={
@@ -82,6 +120,15 @@ export function Header() {
         >
           Refresh
         </button>
+
+        {canStartNewCycle && (
+          <button
+            onClick={() => startNewCycle()}
+            className="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded"
+          >
+            New Cycle
+          </button>
+        )}
         {/* Settings Button */}
         <button
           onClick={() => setSettingsOpen(true)}

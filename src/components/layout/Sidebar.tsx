@@ -2,12 +2,17 @@ import React from 'react';
 import { useProjectStore } from '../../stores/project';
 
 export function Sidebar({ stages, currentStage }: any) {
-  const { workflowGoto, isStageAccepted, currentProject } = useProjectStore();
+  const {
+    workflowGoto,
+    isStageAccepted,
+    currentProject,
+    currentCycle,
+  } = useProjectStore();
 
   // Helper to fetch latest evaluation score (if any) for a stage
   function getStageScore(stageId: number): number | null {
     const rows = currentProject?.stages?.filter(
-      (r: any) => r.stage_number === stageId
+      (r: any) => r.stage_number === stageId && r.cycle === currentCycle
     );
     if (!rows || rows.length === 0) return null;
 

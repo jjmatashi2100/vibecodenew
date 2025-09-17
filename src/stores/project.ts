@@ -18,6 +18,7 @@ declare global {
       generateContent: (prompt: string, options: any) => Promise<string | { error: string }>;
       exportProject: (data: any) => Promise<any>;
       getVersion: () => Promise<string>;
+      updateProject: (id: string, data: any) => Promise<any>;
       updateContext: (projectId: string, data: any) => Promise<any>;
     };
   }
@@ -26,6 +27,7 @@ declare global {
 interface ProjectStore {
   currentProject: any;
   currentStage: number;
+  currentCycle: number;
   stageData: Record<number, any>;
   acceptedStages: number[];
   context: any;
@@ -42,6 +44,10 @@ interface ProjectStore {
   workflowNext: () => void;
   workflowPrev: () => void;
   workflowGoto: (stage: number) => void;
+
+  /* Cycle helpers */
+  setCycle: (cycle: number) => Promise<void>;
+  startNewCycle: () => Promise<void>;
 }
 
 /* -----------------------------------------------------------
@@ -53,6 +59,7 @@ let workflowService: any = null;
 export const useProjectStore = create<ProjectStore>((set, get) => ({
   currentProject: null,
   currentStage: 1,
+  currentCycle: 1,
   stageData: {},
   acceptedStages: [],
   context: {},
@@ -60,6 +67,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   loadProject: async (id: string) => {
     try {
       const project = await window.electronAPI.loadProject(id);
+      const cycle = project.current_cycle ?? 1;
       /* -----------------------------------------------------------
          Build maps with ONLY accepted rows (is_accepted === 1)
          For each stage we keep the latest accepted version.
@@ -67,7 +75,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const acceptedMap: Record<number, any> = {};
       const acceptedList: number[] = [];
       (project.stages || []).forEach((row: any) => {
-        if (row.is_accepted) {
+        if (row.is_accepted && row.cycle === cycle) {
           acceptedMap[row.stage_number] = JSON.parse(row.content);
           if (!acceptedList.includes(row.stage_number)) {
             acceptedList.push(row.stage_number);
@@ -78,6 +86,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       set({
         currentProject: project,
         currentStage: project.current_stage ?? 1,
+        currentCycle: cycle,
         stageData: acceptedMap,
         acceptedStages: acceptedList,
         context: project.context || {}
@@ -186,6 +195,46 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   
   isStageAccepted: (stage: number) => get().acceptedStages.includes(stage),
   
+  /* ----------------------- Cycle helpers ----------------------- */
+  setCycle: async (cycle: number) => {
+    const state = get();
+    if (!state.currentProject) return;
+    try {
+      await window.electronAPI.updateProject(state.currentProject.id, {
+        current_cycle: cycle,
+        current_stage: 1
+      });
+      // reload project to refresh stages for this cycle
+      await get().loadProject(state.currentProject.id);
+      set({ currentStage: 1 });
+      get().startWorkflow();
+    } catch (e) {
+      console.error('Failed to switch cycle:', e);
+    }
+  },
+
+  startNewCycle: async () => {
+    const state = get();
+    if (!state.currentProject) return;
+    const next = (state.currentProject.current_cycle ?? 1) + 1;
+    try {
+      await window.electronAPI.updateProject(state.currentProject.id, {
+        current_cycle: next,
+        current_stage: 1
+      });
+      await get().loadProject(state.currentProject.id);
+      set({
+        currentCycle: next,
+        currentStage: 1,
+        stageData: {},
+        acceptedStages: []
+      });
+      get().startWorkflow();
+    } catch (e) {
+      console.error('Failed to start new cycle:', e);
+    }
+  },
+
   /* --------------------  XState integration  -------------------- */
 
   startWorkflow: () => {

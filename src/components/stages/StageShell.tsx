@@ -53,11 +53,16 @@ export function StageShell({
     acceptStage,
     currentProject,
     isStageAccepted,
+    currentCycle,
+    setCycle,
   } = useProjectStore();
   const { llm } = useAppStore();
   
   // Check if this stage is already accepted
   const accepted = isStageAccepted(stageId);
+  
+  // Check if we're viewing the latest cycle
+  const isLatestCycle = currentCycle === (currentProject?.current_cycle ?? currentCycle);
 
   /* --------------------------------------------------
      Utility to safely parse strict JSON from LLM text
@@ -115,16 +120,52 @@ ${lastChunk}`;
   }
 
   /* ------------------------------------------------------------------
-     Hydrate input / output from autosave on mount or project change
+     Load content from a past cycle into the current one
+  -------------------------------------------------------------------*/
+  function loadIntoCurrentCycle() {
+    if (!output || !currentProject) return;
+    
+    // Switch to the current cycle
+    setCycle(currentProject.current_cycle ?? 1);
+    
+    // Set the output as the input for the current cycle
+    setInputValue(output);
+    
+    // Clear the output since we're moving to a new cycle
+    setOutput('');
+    
+    // Optionally scroll to top
+    window.scrollTo(0, 0);
+  }
+
+  /* ------------------------------------------------------------------
+     Hydrate input / output from autosave on mount or project/cycle change
   -------------------------------------------------------------------*/
   useEffect(() => {
+    // First try autosave
     const auto = currentProject?.settings?.autosave?.[`stage${stageId}`];
     if (auto) {
       if (auto[inputKey] && !inputValue) setInputValue(auto[inputKey]);
       if (auto.output && !output) setOutput(auto.output);
+    } 
+    // If no autosave or we switched cycles, try to hydrate from database
+    else if (currentProject?.stages) {
+      // Find the latest row for this stage in the current cycle
+      const stageRows = currentProject.stages
+        .filter((row: any) => row.stage_number === stageId && row.cycle === currentCycle)
+        .sort((a: any, b: any) => b.version - a.version);
+      
+      if (stageRows.length > 0) {
+        try {
+          const latestContent = JSON.parse(stageRows[0].content);
+          setOutput(latestContent);
+        } catch (e) {
+          console.error('Failed to parse stage content:', e);
+        }
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProject?.id]);
+  }, [currentProject?.id, currentCycle, stageId]);
 
   /* ------------------------------------------------------------------
      Autosave every 10 s whenever input/output change
@@ -132,6 +173,7 @@ ${lastChunk}`;
   useEffect(() => {
     if (!currentProject?.id) return;
     if (!inputValue.trim() && !output.trim()) return;
+    if (!isLatestCycle) return; // Don't autosave when viewing past cycles
 
     const timer = setTimeout(async () => {
       try {
@@ -156,7 +198,7 @@ ${lastChunk}`;
     }, 10_000);
 
     return () => clearTimeout(timer);
-  }, [inputValue, output, currentProject?.id, inputKey, stageId]);
+  }, [inputValue, output, currentProject?.id, inputKey, stageId, isLatestCycle]);
 
   /* ------------------------------------------------------------------
      Generate content using the stage-specific initial prompt
@@ -240,7 +282,8 @@ ${lastChunk}`;
         // Save to database (using final aggregate with continuations)
         await saveStageData(stageId, {
           content: aggregate,
-          questions: questions
+          questions: questions,
+          cycle: currentCycle
         });
       }
     } catch (error) {
@@ -278,7 +321,11 @@ ${lastChunk}`;
       const parsed = typeof res === 'string' ? parseJsonStrict(res) : null;
       if (parsed) {
         setEvalResult(parsed);
-        await saveStageData(stageId, { content: output, feedback: parsed });
+        await saveStageData(stageId, { 
+          content: output, 
+          feedback: parsed,
+          cycle: currentCycle
+        });
       }
     } catch (e) {
       console.error('Evaluation error:', e);
@@ -327,7 +374,8 @@ ${lastChunk}`;
         setEvalResult(null);
         await saveStageData(stageId, { 
           content: improvedAggregate, 
-          feedback: evalResult 
+          feedback: evalResult,
+          cycle: currentCycle
         });
       }
     } catch (e) {
@@ -368,7 +416,7 @@ ${lastChunk}`;
         <div className="flex flex-wrap gap-2 mb-4">
           <button
             onClick={generate}
-            disabled={isGenerating}
+            disabled={isGenerating || !isLatestCycle}
             className="px-4 py-1 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
           >
             {isGenerating ? 'Generating…' : 'Generate'}
@@ -376,7 +424,7 @@ ${lastChunk}`;
 
           <button
             onClick={evaluateOutput}
-            disabled={!output || isGenerating || isEvaluating}
+            disabled={!output || isGenerating || isEvaluating || !isLatestCycle}
             className="px-4 py-1 text-sm rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
           >
             {isEvaluating ? 'Evaluating…' : 'Evaluate'}
@@ -384,13 +432,13 @@ ${lastChunk}`;
 
           <button
             onClick={applyOptimizations}
-            disabled={!evalResult?.deltas || isOptimizing}
+            disabled={!evalResult?.deltas || isOptimizing || !isLatestCycle}
             className="px-4 py-1 text-sm rounded-md bg-orange-600 text-white hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
           >
             {isOptimizing ? 'Optimizing…' : 'Optimize'}
           </button>
 
-          {isBusy && (
+          {isBusy && isLatestCycle && (
             <button
               onClick={cancelCurrent}
               className="px-4 py-1 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
@@ -401,9 +449,9 @@ ${lastChunk}`;
 
           <button
             onClick={() => acceptStage(stageId, output)}
-            disabled={accepted || !output}
+            disabled={accepted || !output || !isLatestCycle}
             className={`px-4 py-1 text-sm rounded-md ${
-              accepted || !output
+              accepted || !output || !isLatestCycle
                 ? 'bg-green-800 text-white cursor-not-allowed'
                 : 'bg-green-600 text-white hover:bg-green-700'
             }`}
@@ -421,12 +469,13 @@ ${lastChunk}`;
             onChange={(e) => setInputValue(e.target.value)}
             className="w-full h-32 px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-600 focus:border-blue-500 focus:outline-none"
             placeholder={placeholder}
+            disabled={!isLatestCycle}
           />
         </div>
         
         <button
           onClick={generate}
-          disabled={isGenerating}
+          disabled={isGenerating || !isLatestCycle}
           className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
         >
           {isGenerating ? (
@@ -439,7 +488,7 @@ ${lastChunk}`;
           )}
         </button>
 
-        {isBusy && (
+        {isBusy && isLatestCycle && (
           <button
             onClick={cancelCurrent}
             className="ml-2 px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
@@ -452,20 +501,38 @@ ${lastChunk}`;
       {/* Output Section */}
       {output && (
         <div className="bg-gray-700 rounded-lg p-6 mb-4">
-          <h3 className="text-xl font-semibold text-white mb-4">
-            Generated {title}
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-semibold text-white">
+              Generated {title}
+            </h3>
+            
+            {!isLatestCycle && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-amber-300 font-medium">
+                  Viewing Cycle {currentCycle} (read-only)
+                </span>
+                <button
+                  onClick={loadIntoCurrentCycle}
+                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Load into Current Cycle
+                </button>
+              </div>
+            )}
+          </div>
+          
           <Editor
             value={output}
             onChange={setOutput}
             language={editorLanguage}
             height={editorHeight}
+            readOnly={!isLatestCycle}
           />
         </div>
       )}
       
       {/* Questions Section */}
-      {questions.length > 0 && (
+      {questions.length > 0 && isLatestCycle && (
         <div className="mb-4">
           <QuestionPanel
             questions={questions}
@@ -475,11 +542,11 @@ ${lastChunk}`;
       )}
       
       {/* Evaluation & Optimization */}
-      {output && (
+      {output && isLatestCycle && (
         <div className="space-y-4 mb-4">
           <button
             onClick={evaluateOutput}
-            disabled={isEvaluating || isGenerating}
+            disabled={isEvaluating || isGenerating || !isLatestCycle}
             className="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
           >
             {isEvaluating ? 'Evaluating...' : 'Evaluate'}
@@ -514,7 +581,7 @@ ${lastChunk}`;
               </p>
               <button
                 onClick={applyOptimizations}
-                disabled={isOptimizing}
+                disabled={isOptimizing || !isLatestCycle}
                 className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
               >
                 {isOptimizing ? 'Applying...' : 'Apply Optimizations'}
@@ -539,17 +606,19 @@ ${lastChunk}`;
             Previous
           </button>
           
-          <button
-            onClick={() => acceptStage(stageId, output)}
-            disabled={accepted}
-            className={`px-6 py-2 rounded-md ${
-              accepted
-                ? 'bg-green-800 text-white cursor-not-allowed'
-                : 'bg-green-600 text-white hover:bg-green-700'
-            }`}
-          >
-            {accepted ? 'Accepted' : 'Accept & Continue'}
-          </button>
+          {isLatestCycle && (
+            <button
+              onClick={() => acceptStage(stageId, output)}
+              disabled={accepted || !isLatestCycle}
+              className={`px-6 py-2 rounded-md ${
+                accepted || !isLatestCycle
+                  ? 'bg-green-800 text-white cursor-not-allowed'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
+            >
+              {accepted ? 'Accepted' : 'Accept & Continue'}
+            </button>
+          )}
         </div>
       )}
     </div>
