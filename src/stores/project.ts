@@ -94,6 +94,21 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         stageNumber: stage, 
         ...data 
       });
+
+      /* -----------------------------------------------------------
+         Immediately refresh currentProject so UI (e.g. Sidebar) has
+         access to the newest stage_data rows such as evaluation
+         feedback/score that were just inserted.
+      ----------------------------------------------------------- */
+      try {
+        const updatedProject = await window.electronAPI.loadProject(
+          get().currentProject.id
+        );
+        set({ currentProject: updatedProject });
+      } catch (e) {
+        console.error('Failed to refresh project after stage save:', e);
+      }
+
       // Reflect only accepted versions in local state
       if (data.isAccepted) {
         set((state) => ({

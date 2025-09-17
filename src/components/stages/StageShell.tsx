@@ -257,6 +257,44 @@ export function StageShell({
             {accepted ? 'Accepted' : 'Draft'}
           </span>
         </div>
+        {/* Compact action toolbar */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={generate}
+            disabled={isGenerating}
+            className="px-4 py-1 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+          >
+            {isGenerating ? 'Generating…' : 'Generate'}
+          </button>
+
+          <button
+            onClick={evaluateOutput}
+            disabled={!output || isGenerating || isEvaluating}
+            className="px-4 py-1 text-sm rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+          >
+            {isEvaluating ? 'Evaluating…' : 'Evaluate'}
+          </button>
+
+          <button
+            onClick={applyOptimizations}
+            disabled={!evalResult?.deltas || isOptimizing}
+            className="px-4 py-1 text-sm rounded-md bg-orange-600 text-white hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+          >
+            {isOptimizing ? 'Optimizing…' : 'Optimize'}
+          </button>
+
+          <button
+            onClick={() => acceptStage(stageId, output)}
+            disabled={accepted || !output}
+            className={`px-4 py-1 text-sm rounded-md ${
+              accepted || !output
+                ? 'bg-green-800 text-white cursor-not-allowed'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+          >
+            {accepted ? 'Accepted' : 'Accept'}
+          </button>
+        </div>
         
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-300 mb-2">
