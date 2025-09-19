@@ -1,0 +1,75 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./vibe-code.db"
+}
+
+model Project {
+  id            String      @id @default(cuid())
+  name          String
+  description   String?
+  currentStage  Int         @default(1)
+  isCompleted   Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  stages        StageData[]
+  context       Context?
+  exports       Export[]
+}
+
+model StageData {
+  id            String      @id @default(cuid())
+  projectId     String
+  stageNumber   Int
+  version       Int         @default(1)
+  content       String      // JSON stringified
+  questions     String?     // JSON stringified
+  feedback      String?     // JSON stringified
+  isAccepted    Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  iterations    Iteration[]
+  
+  @@unique([projectId, stageNumber, version])
+  @@index([projectId, stageNumber])
+}
+
+model Iteration {
+  id            String      @id @default(cuid())
+  stageDataId   String
+  content       String
+  feedback      String?     // JSON stringified
+  createdAt     DateTime    @default(now())
+  
+  stageData     StageData   @relation(fields: [stageDataId], references: [id], onDelete: Cascade)
+}
+
+model Context {
+  id            String      @id @default(cuid())
+  projectId     String      @unique
+  globalContext String      // JSON stringified
+  techStack     String?     // JSON stringified
+  styleGuide    String?     // JSON stringified
+  dataModels    String?     // JSON stringified
+  updatedAt     DateTime    @updatedAt
+  
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Export {
+  id            String      @id @default(cuid())
+  projectId     String
+  platform      String      // claude, cursor, windsurf, etc.
+  content       String
+  createdAt     DateTime    @default(now())
+  
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
