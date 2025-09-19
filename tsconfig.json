@@ -14,4 +14,12 @@
     "types": ["vite/client"]
   },
   "include": ["src"]
+  ,
+  "exclude": [
+    "src/components/workflow",
+    "src/components/settings",
+    "src/hooks",
+    "src/lib/llm",
+    "src/lib/workflow"
+  ]
 }
