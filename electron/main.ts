@@ -22,8 +22,12 @@ let dbPath: string;
    Dev-only helper: find a running Vite dev server we can load.
 -------------------------------------------------------------- */
 async function resolveDevServerUrl(): Promise<string> {
+  /* If the caller already provided a dev-server URL, trust it first. */
+  if (process.env.VITE_DEV_SERVER_URL) {
+    return process.env.VITE_DEV_SERVER_URL;
+  }
+
   const candidates = [
-    process.env.VITE_DEV_SERVER_URL,
     'http://127.0.0.1:3001',
     'http://127.0.0.1:3000',
     'http://localhost:3001',
@@ -96,7 +100,21 @@ if (!gotTheLock) {
         console.log('[electron] did-finish-load', mainWindow?.webContents.getURL());
       });
 
-      await mainWindow.loadURL(devUrl);
+      try {
+        await mainWindow.loadURL(devUrl);
+      } catch (e) {
+        console.error('[electron] loadURL error:', e);
+        /* ----------------------------------------------------
+           Dev server unreachable – fall back to production
+           build so the UI still appears.
+        ---------------------------------------------------- */
+        try {
+          console.warn('[electron] Falling back to built index.html');
+          await mainWindow.loadFile(path.join(__dirname, '../build/index.html'));
+        } catch (fallbackErr) {
+          console.error('[electron] Fallback loadFile failed:', fallbackErr);
+        }
+      }
       mainWindow.webContents.openDevTools();
     } else {
       // In production, resolve the renderer HTML relative to the compiled
