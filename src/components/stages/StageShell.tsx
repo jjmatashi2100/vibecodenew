@@ -94,33 +94,80 @@ export function StageShell({
 
     // 2) Tolerant parsing for common LLM artefacts
     try {
-      /* ---------------- candidate extraction ---------------- */
-      const firstBrace = text.indexOf('{');
-      const lastBrace = text.lastIndexOf('}');
-      if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace)
-        return null;
-
-      let candidate = text.slice(firstBrace, lastBrace + 1);
-
+      // Sanitize the text first
+      let sanitized = text;
+      
       // Strip ``` fences / backticks
-      candidate = candidate.replace(/```(?:json)?/gi, '');
-
+      sanitized = sanitized.replace(/```(?:json)?/gi, '');
+      
       // Replace smart quotes with ASCII quotes
-      candidate = candidate
-        .replace(/[“”«»]/g, '"')
-        .replace(/[‘’]/g, "'");
-
-      // Remove trailing commas before } or ]
-      candidate = candidate.replace(/,\s*([}\]])/g, '$1');
-
+      sanitized = sanitized
+        .replace(/[""«»]/g, '"')
+        .replace(/['']/g, "'");
+      
       // Trim BOM and whitespace
-      candidate = candidate.trim().replace(/^\uFEFF/, '');
-
-      return JSON.parse(candidate);
+      sanitized = sanitized.trim().replace(/^\uFEFF/, '');
+      
+      // Extract the first balanced JSON object
+      const candidate = extractFirstBalancedObject(sanitized);
+      if (!candidate) return null;
+      
+      // Try to parse the candidate
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        // If parsing fails, try removing trailing commas and parse again
+        const withoutTrailingCommas = candidate.replace(/,\s*([}\]])/g, '$1');
+        return JSON.parse(withoutTrailingCommas);
+      }
     } catch {
       /* still invalid */
       return null;
     }
+  }
+  
+  /* --------------------------------------------------
+     Helper to extract the first balanced JSON object
+  -------------------------------------------------- */
+  function extractFirstBalancedObject(text: string): string | null {
+    const firstBrace = text.indexOf('{');
+    if (firstBrace === -1) return null;
+    
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let start = -1;
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      
+      // Handle string state
+      if (char === '"' && !escaped) {
+        inString = !inString;
+      }
+      
+      // Track escape sequences inside strings
+      if (inString) {
+        escaped = char === '\\' && !escaped;
+        continue; // Skip other processing while in a string
+      }
+      
+      // Track depth with braces
+      if (char === '{') {
+        if (depth === 0) {
+          start = i; // Mark the start of the top-level object
+        }
+        depth++;
+      } else if (char === '}') {
+        depth--;
+        // If we've found a balanced object and we're back at depth 0
+        if (depth === 0 && start !== -1) {
+          return text.substring(start, i + 1);
+        }
+      }
+    }
+    
+    return null; // No balanced object found
   }
 
   /* --------------------------------------------------
