@@ -45,11 +45,11 @@ For each task provide:
 * Description
 * Phase (ID reference)
 * Dependencies  
-  * taskId & type (`hard` | `soft`)
+  * taskId & type (\`hard\` | \`soft\`)
 * Files (MAX 15)  
-  * path, operation (`create|modify|delete`), description
+  * path, operation (\`create|modify|delete\`), description
 * Estimated Time (beginner & experienced, in minutes)
-* Complexity (`Low|Medium|High`)
+* Complexity (\`Low|Medium|High\`)
 * Evaluator Checks (list of pass/fail criteria)
 * Optimizer Suggestions (optional improvements)
 
@@ -112,7 +112,7 @@ Return the entire output as JSON in this exact structure:
 <warnings-and-guidance>
 - **STRICT 15-FILE LIMIT** per task – hard constraint, no exceptions.
 - Keep tasks small (1-4 hours of work) and self-contained.
-- Ensure clear `hard` vs `soft` dependencies to establish execution order.
+- Ensure clear \`hard\` vs \`soft\` dependencies to establish execution order.
 - Apply the **evaluator-optimizer pattern**: each task must include evaluation criteria and optimization suggestions.
 - Cover every aspect of implementation – nothing should be left unplanned.
 - Maintain consistency with prior stage specifications and architecture.

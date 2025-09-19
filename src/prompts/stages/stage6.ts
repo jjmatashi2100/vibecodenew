@@ -95,9 +95,9 @@ Each time the user responds back to you with feedback or answers to your questio
 **Purpose:** [What this query accomplishes]
 
 **Query Pattern:**
-```sql
+\`\`\`sql
 [Example SQL or query language pattern]
-```
+\`\`\`
 
 **Optimization Strategy:**
 * [Index usage]
