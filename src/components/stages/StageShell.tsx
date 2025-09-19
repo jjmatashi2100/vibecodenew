@@ -80,6 +80,7 @@ export function StageShell({
      Utility to safely parse strict JSON from LLM text
   -------------------------------------------------- */
   function parseJsonStrict(text: string) {
+    // 1) Fast-path: original behaviour
     try {
       const match =
         text.match(/```json\s*([\s\S]*?)\s*```/i) ||
@@ -88,9 +89,38 @@ export function StageShell({
         return JSON.parse(match[1] ?? match[0]);
       }
     } catch {
-      /* ignore */
+      /* fall through to tolerant path */
     }
-    return null;
+
+    // 2) Tolerant parsing for common LLM artefacts
+    try {
+      /* ---------------- candidate extraction ---------------- */
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace)
+        return null;
+
+      let candidate = text.slice(firstBrace, lastBrace + 1);
+
+      // Strip ``` fences / backticks
+      candidate = candidate.replace(/```(?:json)?/gi, '');
+
+      // Replace smart quotes with ASCII quotes
+      candidate = candidate
+        .replace(/[“”«»]/g, '"')
+        .replace(/[‘’]/g, "'");
+
+      // Remove trailing commas before } or ]
+      candidate = candidate.replace(/,\s*([}\]])/g, '$1');
+
+      // Trim BOM and whitespace
+      candidate = candidate.trim().replace(/^\uFEFF/, '');
+
+      return JSON.parse(candidate);
+    } catch {
+      /* still invalid */
+      return null;
+    }
   }
 
   /* --------------------------------------------------
