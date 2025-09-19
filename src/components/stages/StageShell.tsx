@@ -224,6 +224,7 @@ The output must have at least ${min} items in the mvp_features array.`;
       
       if (typeof result === 'string') {
         let aggregate = result;
+        setOutput(aggregate);
         
         // Auto-continue if the JSON is incomplete
         if (isIncompleteJson(aggregate)) {
@@ -232,25 +233,32 @@ The output must have at least ${min} items in the mvp_features array.`;
             if (!isIncompleteJson(aggregate)) break; // Stop if we have valid JSON
             
             const continuation = await continueJson(aggregate, 900);
-
-        // If still not valid JSON, try a coercion pass
-        if (isIncompleteJson(aggregate)) {
-          const coerced = await coerceToJson(aggregate, 900);
-          if (coerced) {
-            aggregate = coerced;
-            setOutput(aggregate);
-          }
-        }
             if (!continuation) break; // Stop if continuation failed
             
             aggregate += continuation;
+            setOutput(aggregate); // Update UI with progress
             
             // If we got valid JSON, stop continuing
             if (!isIncompleteJson(aggregate)) break;
           }
+          
+          // If still not valid JSON, try a coercion pass
+          if (isIncompleteJson(aggregate)) {
+            const coerced = await coerceToJson(aggregate, 900);
+            if (coerced) {
+              aggregate = coerced;
+              setOutput(aggregate);
+            }
+          }
         }
         
-        setOutput(aggregate);
+        // Try to parse and canonicalize
+        const parsed = parseJsonStrict(aggregate);
+        if (parsed) {
+          aggregate = JSON.stringify(parsed, null, 2);
+          setOutput(aggregate);
+        }
+        
         setEvalResult(null);
         
         // Save to database
@@ -393,22 +401,30 @@ The output must have at least ${min} items in the mvp_features array.`;
             if (!isIncompleteJson(aggregate)) break; // Stop if we have valid JSON
             
             const continuation = await continueJson(aggregate, continuationBudget);
-
-        // If still not valid JSON, try a coercion pass
-        if (isIncompleteJson(aggregate)) {
-          const coerced = await coerceToJson(aggregate, 900);
-          if (coerced) {
-            aggregate = coerced;
-          }
-        }
             if (!continuation) break; // Stop if continuation failed
-        setOutput(aggregate);
+            
             aggregate += continuation;
             setOutput(aggregate); // Update UI with progress
             
             // If we got valid JSON, stop continuing
             if (!isIncompleteJson(aggregate)) break;
           }
+          
+          // If still not valid JSON, try a coercion pass
+          if (isIncompleteJson(aggregate)) {
+            const coerced = await coerceToJson(aggregate, 900);
+            if (coerced) {
+              aggregate = coerced;
+              setOutput(aggregate);
+            }
+          }
+        }
+        
+        // Try to parse and canonicalize
+        const parsed = parseJsonStrict(aggregate);
+        if (parsed) {
+          aggregate = JSON.stringify(parsed, null, 2);
+          setOutput(aggregate);
         }
         
         // Try to parse questions from output
@@ -560,15 +576,6 @@ The output must have at least ${min} items in the mvp_features array.`;
             if (!isIncompleteJson(improvedAggregate)) break; // Stop if we have valid JSON
             
             const continuation = await continueJson(improvedAggregate, continuationBudget);
-
-        // If still not valid JSON, try a coercion pass
-        if (isIncompleteJson(improvedAggregate)) {
-          const coerced = await coerceToJson(improvedAggregate, 900);
-          if (coerced) {
-            improvedAggregate = coerced;
-            setOutput(improvedAggregate);
-          }
-        }
             if (!continuation) break; // Stop if continuation failed
             
             improvedAggregate += continuation;
@@ -577,6 +584,22 @@ The output must have at least ${min} items in the mvp_features array.`;
             // If we got valid JSON, stop continuing
             if (!isIncompleteJson(improvedAggregate)) break;
           }
+          
+          // If still not valid JSON, try a coercion pass
+          if (isIncompleteJson(improvedAggregate)) {
+            const coerced = await coerceToJson(improvedAggregate, 900);
+            if (coerced) {
+              improvedAggregate = coerced;
+              setOutput(improvedAggregate);
+            }
+          }
+        }
+        
+        // Try to parse and canonicalize
+        const parsed = parseJsonStrict(improvedAggregate);
+        if (parsed) {
+          improvedAggregate = JSON.stringify(parsed, null, 2);
+          setOutput(improvedAggregate);
         }
         
         setEvalResult(null);

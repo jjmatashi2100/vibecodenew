@@ -557,6 +557,8 @@ Create a comprehensive technical specification including:
    - If performance is key, ask about optimization strategies
    - If integration-heavy, ask about API versioning and fallbacks
 
+Respond with a SINGLE top-level JSON object only. Do NOT include any markdown, code fences, or prose. If narrative is required, embed it inside JSON fields.
+
 ${PROMPT_COMPONENTS.jsonInstruction}
 JSON SCHEMA (must match exactly):
 ${schemaForStage(5)}
@@ -594,6 +596,8 @@ Generate an improved technical specification including all essential sections:
 8. THIRD-PARTY INTEGRATIONS
 9. QUESTIONS (if any remain)
    - Generate 3-5 RELEVANT questions based on the specific context
+
+Respond with a SINGLE top-level JSON object only. Do NOT include any markdown, code fences, or prose. If narrative is required, embed it inside JSON fields.
 
 ${PROMPT_COMPONENTS.jsonInstruction}
 JSON SCHEMA (must match exactly):
