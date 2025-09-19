@@ -118,7 +118,19 @@ export function StageShell({
       } catch {
         // If parsing fails, try removing trailing commas and parse again
         const withoutTrailingCommas = candidate.replace(/,\s*([}\]])/g, '$1');
-        return JSON.parse(withoutTrailingCommas);
+        try {
+          return JSON.parse(withoutTrailingCommas);
+        } catch {
+          /* --------------------------------------------------
+             Last-ditch: escape raw newlines / tabs in strings
+          -------------------------------------------------- */
+          try {
+            const escaped = escapeInvalidStringChars(withoutTrailingCommas);
+            return JSON.parse(escaped);
+          } catch {
+            /* give up */
+          }
+        }
       }
     } catch {
       /* still invalid */
@@ -126,6 +138,53 @@ export function StageShell({
     }
   }
   
+  /* --------------------------------------------------
+     Escape unescaped control chars inside JSON strings
+  -------------------------------------------------- */
+  function escapeInvalidStringChars(json: string): string {
+    let inString = false;
+    let escaped = false;
+    let out = '';
+    for (let i = 0; i < json.length; i++) {
+      const ch = json[i];
+      if (inString) {
+        if (escaped) {
+          // previous was backslash, just emit and reset
+          out += ch;
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\\\') {
+          out += ch;
+          escaped = true;
+          continue;
+        }
+        if (ch === '\"') {
+          inString = false;
+          out += ch;
+          continue;
+        }
+        // replace raw control chars
+        if (ch === '\\n') {
+          out += '\\\\n';
+        } else if (ch === '\\r') {
+          out += '\\\\r';
+        } else if (ch === '\\t') {
+          out += '\\\\t';
+        } else {
+          out += ch;
+        }
+        continue;
+      } else {
+        if (ch === '\"') {
+          inString = true;
+        }
+        out += ch;
+      }
+    }
+    return out;
+  }
+
   /* --------------------------------------------------
      Helper to extract the first balanced JSON object
   -------------------------------------------------- */
