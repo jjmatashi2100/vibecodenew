@@ -43,6 +43,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
+    },
+    // keep symlink (junction) paths intact so Rollup/Vite don't emit
+    // assets with invalid relative paths during Windows junction builds
+    preserveSymlinks: true
     }
   },
   server: {
