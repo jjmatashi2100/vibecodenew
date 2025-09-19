@@ -5,7 +5,7 @@
   "license": "MIT",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently \"vite\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on tcp:3000 && cross-env NODE_ENV=development electron .\"",
+    "dev": "concurrently \"vite\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on tcp:3000 && cross-env NODE_ENV=development ELECTRON_DISABLE_SECURITY_WARNINGS=1 electron .\"",
     "start": "electron .",
     "build": "vite build && tsc -p tsconfig.electron.json && electron-builder",
     "build:react": "vite build",
