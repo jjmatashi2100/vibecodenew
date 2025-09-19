@@ -390,6 +390,40 @@ The output must have at least ${min} items in the mvp_features array.`;
     }
     const parsed = parseJsonStrict(output);
     if (!parsed) {
+      /* --------------------------------------------------
+         Auto-salvage: try to extract a balanced object,
+         parse it, and re-canonicalize.
+      -------------------------------------------------- */
+      try {
+        // remove any ``` fences first
+        const withoutFences = output.replace(/```(?:json)?/gi, '');
+        const salvagedRaw = extractFirstBalancedObject(withoutFences);
+        if (salvagedRaw) {
+          let salvaged: any = null;
+          try {
+            salvaged = JSON.parse(salvagedRaw);
+          } catch {
+            // retry after stripping trailing commas
+            const cleaned = salvagedRaw.replace(/,\\s*([}\\]])/g, '$1');
+            salvaged = JSON.parse(cleaned);
+          }
+
+          if (salvaged) {
+            // canonicalize & update UI/state
+            const canonical = JSON.stringify(salvaged, null, 2);
+            setOutput(canonical);
+            setValidation(
+              validateStageOutput(stageId, salvaged, {
+                minMVPFeatures: llm.params.minMVPFeatures || 3,
+              })
+            );
+            return; // done
+          }
+        }
+      } catch {
+        /* ignore salvage errors and fall through */
+      }
+      // Fallback: still invalid
       setValidation({ valid: false, issues: ['Output is not valid JSON'] });
       return;
     }
