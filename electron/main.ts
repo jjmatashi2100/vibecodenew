@@ -18,6 +18,33 @@ import { createApplicationMenu } from './utils/menu';
 let mainWindow: BrowserWindow | null = null;
 let dbPath: string;
 
+/* --------------------------------------------------------------
+   Dev-only helper: find a running Vite dev server we can load.
+-------------------------------------------------------------- */
+async function resolveDevServerUrl(): Promise<string> {
+  const candidates = [
+    process.env.VITE_DEV_SERVER_URL,
+    'http://127.0.0.1:3001',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://localhost:3000',
+  ].filter(Boolean) as string[];
+
+  for (const url of candidates) {
+    try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(id);
+      if (res.ok) return url;
+    } catch {
+      /* try next candidate */
+    }
+  }
+  // fallback
+  return 'http://127.0.0.1:3000';
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
@@ -30,7 +57,7 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     const documentsPath = app.getPath('documents');
     const appDataPath = path.join(documentsPath, 'VibeCodeSystem');
     dbPath = path.join(appDataPath, 'database.db');
@@ -56,11 +83,20 @@ if (!gotTheLock) {
     Menu.setApplicationMenu(createApplicationMenu(mainWindow));
 
     if (process.env.NODE_ENV === 'development') {
-      // Prefer IPv4 loopback to avoid IPv6 ↔ IPv4 “connection refused” issues.
-      // Allow overriding via VITE_DEV_SERVER_URL for flexibility (e.g. custom port).
-      const devUrl =
-        process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:3000';
-      mainWindow.loadURL(devUrl);
+      // Dynamically locate the running Vite dev server (3001 > 3000 fallback)
+      const devUrl = await resolveDevServerUrl();
+
+      console.log('[electron] NODE_ENV=development');
+      console.log('[electron] using dev server:', devUrl);
+
+      mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+        console.error('[electron] did-fail-load', { code, desc, url });
+      });
+      mainWindow.webContents.on('did-finish-load', () => {
+        console.log('[electron] did-finish-load', mainWindow?.webContents.getURL());
+      });
+
+      await mainWindow.loadURL(devUrl);
       mainWindow.webContents.openDevTools();
     } else {
       // In production, resolve the renderer HTML relative to the compiled
