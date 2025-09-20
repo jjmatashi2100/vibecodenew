@@ -599,34 +599,39 @@ The output must have at least ${min} items in the mvp_features array.`;
           aggregate = JSON.stringify(parsed, null, 2);
           setOutput(aggregate);
         }
-        
-        // Try to parse questions from output
+
+        /* ---------------------------------------------------------
+           Parse questions using the same tolerant JSON parser
+        --------------------------------------------------------- */
         try {
-          const jsonMatch = aggregate.match(/```json\n([\s\S]*?)\n```/) || 
-                           aggregate.match(/{[\s\S]*}/);
-          
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0].replace(/```json\n|```/g, ''));
-            
+          const parsedForQuestions: any = parseJsonStrict(aggregate);
+          if (parsedForQuestions) {
             // Look for questions in various fields
             const questionKeys = [
-              "questions", "QUESTIONS", "CRITICAL QUESTIONS", 
-              "TECHNICAL QUESTIONS", "USER FLOW QUESTIONS", 
-              "DESIGN QUESTIONS", "SPECIFICATION QUESTIONS", 
-              "DATA QUESTIONS", "PLANNING QUESTIONS"
+              'questions',
+              'QUESTIONS',
+              'CRITICAL QUESTIONS',
+              'TECHNICAL QUESTIONS',
+              'USER FLOW QUESTIONS',
+              'DESIGN QUESTIONS',
+              'SPECIFICATION QUESTIONS',
+              'DATA QUESTIONS',
+              'PLANNING QUESTIONS',
             ];
-            
+
             let extractedQuestions: any[] = [];
             for (const key of questionKeys) {
-              if (parsed[key]) {
-                extractedQuestions = Array.isArray(parsed[key]) 
-                  ? parsed[key] 
-                  : Object.values(parsed[key]);
+              if (parsedForQuestions[key]) {
+                extractedQuestions = Array.isArray(parsedForQuestions[key])
+                  ? parsedForQuestions[key]
+                  : Object.values(parsedForQuestions[key]);
                 break;
               }
             }
-            
+
             setQuestions(extractedQuestions);
+          } else {
+            setQuestions([]);
           }
         } catch (e) {
           console.error('Failed to parse questions:', e);
