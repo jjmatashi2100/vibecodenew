@@ -102,8 +102,8 @@ export function StageShell({
       
       // Replace smart quotes with ASCII quotes
       sanitized = sanitized
-        .replace(/[""«»]/g, '"')
-        .replace(/['']/g, "'");
+        .replace(/[“”«»]/g, '"')
+        .replace(/[‘’]/g, "'");
       
       // Trim BOM and whitespace
       sanitized = sanitized.trim().replace(/^\uFEFF/, '');
@@ -154,29 +154,34 @@ export function StageShell({
           escaped = false;
           continue;
         }
-        if (ch === '\\\\') {
+        if (ch === '\\') {
           out += ch;
           escaped = true;
           continue;
         }
-        if (ch === '\"') {
+        if (ch === '"') {
           inString = false;
           out += ch;
           continue;
         }
         // replace raw control chars
-        if (ch === '\\n') {
-          out += '\\\\n';
-        } else if (ch === '\\r') {
-          out += '\\\\r';
-        } else if (ch === '\\t') {
-          out += '\\\\t';
+        if (ch === '\n') {
+          out += '\\n';
+          continue;
+        }
+        if (ch === '\r') {
+          out += '\\r';
+          continue;
+        }
+        if (ch === '\t') {
+          out += '\\t';
+          continue;
         } else {
           out += ch;
         }
         continue;
       } else {
-        if (ch === '\"') {
+        if (ch === '"') {
           inString = true;
         }
         out += ch;
