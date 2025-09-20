@@ -86,11 +86,12 @@ if (!gotTheLock) {
 
     Menu.setApplicationMenu(createApplicationMenu(mainWindow));
 
-    if (process.env.NODE_ENV === 'development') {
+    // If the app isn't packaged we assume we're in a dev environment and try the Vite
+    // dev server; otherwise we load the built files shipped with the app.
+    if (!app.isPackaged) {
       // Dynamically locate the running Vite dev server (3001 > 3000 fallback)
       const devUrl = await resolveDevServerUrl();
 
-      console.log('[electron] NODE_ENV=development');
       console.log('[electron] using dev server:', devUrl);
 
       mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
