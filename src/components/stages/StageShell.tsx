@@ -370,18 +370,15 @@ The output must have at least ${min} items in the mvp_features array.`;
         
         // Auto-continue if the JSON is incomplete
         if (isIncompleteJson(aggregate)) {
-          // Try up to 2 continuation passes
-          for (let pass = 0; pass < 2; pass++) {
-            if (!isIncompleteJson(aggregate)) break; // Stop if we have valid JSON
-            
-            const continuation = await continueJson(aggregate, 900);
-            if (!continuation) break; // Stop if continuation failed
-            
+          const continuationBudget = 900;
+          let attempts = 0;
+          const maxAttempts = 5;
+          while (isIncompleteJson(aggregate) && attempts < maxAttempts) {
+            const continuation = await continueJson(aggregate, continuationBudget);
+            if (!continuation) break;
             aggregate += continuation;
-            setOutput(aggregate); // Update UI with progress
-            
-            // If we got valid JSON, stop continuing
-            if (!isIncompleteJson(aggregate)) break;
+            setOutput(aggregate);
+            attempts += 1;
           }
           
           // If still not valid JSON, try a coercion pass
@@ -571,19 +568,19 @@ The output must have at least ${min} items in the mvp_features array.`;
         // Auto-continue if the JSON is incomplete
         if (isIncompleteJson(aggregate)) {
           const continuationBudget = stageId === 1 ? 1500 : stageId === 3 ? 1200 : 800;
-          
-          // Try up to 2 continuation passes
-          for (let pass = 0; pass < 2; pass++) {
-            if (!isIncompleteJson(aggregate)) break; // Stop if we have valid JSON
-            
+          /* -------------------------------------------------------------
+             Persistently request continuation until valid JSON or we hit
+             the maximum number of attempts. This is more resilient than
+             the previous fixed-iteration approach.
+          ------------------------------------------------------------- */
+          let attempts = 0;
+          const maxAttempts = 5;
+          while (isIncompleteJson(aggregate) && attempts < maxAttempts) {
             const continuation = await continueJson(aggregate, continuationBudget);
-            if (!continuation) break; // Stop if continuation failed
-            
+            if (!continuation) break;           // the model returned nothing
             aggregate += continuation;
-            setOutput(aggregate); // Update UI with progress
-            
-            // If we got valid JSON, stop continuing
-            if (!isIncompleteJson(aggregate)) break;
+            setOutput(aggregate);               // Update UI with progress
+            attempts += 1;
           }
           
           // If still not valid JSON, try a coercion pass
@@ -746,19 +743,14 @@ The output must have at least ${min} items in the mvp_features array.`;
         // Auto-continue if the JSON is incomplete
         if (isIncompleteJson(improvedAggregate)) {
           const continuationBudget = stageId === 1 ? 1500 : stageId === 3 ? 1200 : 800;
-          
-          // Try up to 2 continuation passes
-          for (let pass = 0; pass < 2; pass++) {
-            if (!isIncompleteJson(improvedAggregate)) break; // Stop if we have valid JSON
-            
+          let attempts = 0;
+          const maxAttempts = 5;
+          while (isIncompleteJson(improvedAggregate) && attempts < maxAttempts) {
             const continuation = await continueJson(improvedAggregate, continuationBudget);
-            if (!continuation) break; // Stop if continuation failed
-            
+            if (!continuation) break;
             improvedAggregate += continuation;
-            setOutput(improvedAggregate); // Update UI with progress
-            
-            // If we got valid JSON, stop continuing
-            if (!isIncompleteJson(improvedAggregate)) break;
+            setOutput(improvedAggregate);
+            attempts += 1;
           }
           
           // If still not valid JSON, try a coercion pass
@@ -957,7 +949,16 @@ The output must have at least ${min} items in the mvp_features array.`;
             />
           ) : (
             <div className="bg-gray-800 rounded p-4 overflow-auto" style={{ height: editorHeight }}>
-              <pre className="text-white whitespace-pre-wrap">{output}</pre>
+              {/* Pretty-print the JSON for easy reading; fall back to raw text on parse errors */}
+              <pre className="text-white whitespace-pre-wrap">
+                {(() => {
+                  try {
+                    return JSON.stringify(JSON.parse(output), null, 2);
+                  } catch {
+                    return output;
+                  }
+                })()}
+              </pre>
             </div>
           )}
           
@@ -1063,9 +1064,11 @@ The output must have at least ${min} items in the mvp_features array.`;
           {isLatestCycle && (
             <button
               onClick={() => acceptStage(stageId, output)}
-              disabled={accepted || !isLatestCycle || validation?.valid === false}
+              disabled={
+                accepted || !output || validation?.valid === false
+              }
               className={`px-6 py-2 rounded-md ${
-                accepted || !isLatestCycle || validation?.valid === false
+                accepted || !output || validation?.valid === false
                   ? 'bg-green-800 text-white cursor-not-allowed'
                   : 'bg-green-600 text-white hover:bg-green-700'
               }`}
