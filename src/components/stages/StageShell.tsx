@@ -54,6 +54,7 @@ export function StageShell({
   const [isEnsuringFeatures, setIsEnsuringFeatures] = useState(false);
   const [evalResult, setEvalResult] = useState<any | null>(null);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [viewMode, setViewMode] = useState('json');
   // Derived busy state
   const isBusy = isGenerating || isEvaluating || isOptimizing || isEnsuringFeatures;
 
@@ -102,8 +103,8 @@ export function StageShell({
       
       // Replace smart quotes with ASCII quotes
       sanitized = sanitized
-        .replace(/[“”«»]/g, '"')
-        .replace(/[‘’]/g, "'");
+        .replace(/[""«»]/g, '"')
+        .replace(/['']/g, "'");
       
       // Trim BOM and whitespace
       sanitized = sanitized.trim().replace(/^\uFEFF/, '');
@@ -922,28 +923,43 @@ The output must have at least ${min} items in the mvp_features array.`;
               Generated {title}
             </h3>
             
-            {!isLatestCycle && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-amber-300 font-medium">
-                  Viewing Cycle {currentCycle} (read-only)
-                </span>
-                <button
-                  onClick={loadIntoCurrentCycle}
-                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  Load into Current Cycle
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewMode(viewMode === 'json' ? 'plaintext' : 'json')}
+                className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-500"
+              >
+                View as {viewMode === 'json' ? 'Plaintext' : 'JSON'}
+              </button>
+              
+              {!isLatestCycle && (
+                <>
+                  <span className="text-sm text-amber-300 font-medium">
+                    Viewing Cycle {currentCycle} (read-only)
+                  </span>
+                  <button
+                    onClick={loadIntoCurrentCycle}
+                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Load into Current Cycle
+                  </button>
+                </>
+              )}
+            </div>
           </div>
           
-          <Editor
-            value={output}
-            onChange={setOutput}
-            language={editorLanguage}
-            height={editorHeight}
-            readOnly={!isLatestCycle}
-          />
+          {viewMode === 'json' ? (
+            <Editor
+              value={output}
+              onChange={setOutput}
+              language={editorLanguage}
+              height={editorHeight}
+              readOnly={!isLatestCycle}
+            />
+          ) : (
+            <div className="bg-gray-800 rounded p-4 overflow-auto" style={{ height: editorHeight }}>
+              <pre className="text-white whitespace-pre-wrap">{output}</pre>
+            </div>
+          )}
           
           {/* Validation Status Panel */}
           {validation && (
