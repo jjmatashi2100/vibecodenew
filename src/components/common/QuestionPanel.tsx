@@ -1,7 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export function QuestionPanel({ questions = [], onSubmit }: any) {
   const [answers, setAnswers] = useState<string[]>(Array.from({ length: questions.length }, () => ''));
+
+  // reset answers whenever the questions change
+  useEffect(() => {
+    setAnswers(Array.from({ length: questions.length }, () => ''));
+  }, [questions]);
+
   return (
     <div className="bg-gray-700 rounded-lg p-4 space-y-3">
       <h4 className="text-lg font-semibold text-white">Questions</h4>

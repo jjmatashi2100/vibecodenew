@@ -1,10 +1,4 @@
 import { create } from 'zustand';
-import { createActor } from 'xstate';
-import {
-  createWorkflowMachine,
-  getCurrentStageFromState,
-  getStateIdForStage,
-} from '../lib/workflow/machine';
 
 // Define the window.electronAPI interface
 declare global {
@@ -24,11 +18,16 @@ declare global {
   }
 }
 
+/* ------------------------------------------------------------------
+   Simple in-store stage navigation – no external state machine
+------------------------------------------------------------------- */
 interface ProjectStore {
+  /* ----- Core project state ----- */
   currentProject: any;
   currentStage: number;
   currentCycle: number;
   stageData: Record<number, any>;
+
   acceptedStages: number[];
   context: any;
   
@@ -292,37 +291,25 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   /* --------------------  XState integration  -------------------- */
 
   startWorkflow: () => {
-    const initialStage = get().currentStage || 1;
-
-    // Stop existing service if present
-    if (workflowService?.stop) workflowService.stop();
-
-    // Create new actor and start it
-    workflowService = createActor(createWorkflowMachine(initialStage));
-
-    // Sync Zustand currentStage when machine state changes
-    workflowService.subscribe((state: any) => {
-      const val = state.value as string;
-      const n = getCurrentStageFromState(val);
-      if (n !== get().currentStage) {
-        set({ currentStage: n });
-      }
-    });
-
-    workflowService.start();
+    /* State-machine removed – keep method for API compatibility */
+    return;
   },
 
   workflowNext: () => {
-    if (workflowService) workflowService.send({ type: 'NEXT' });
+    set((state) => ({
+      currentStage: Math.min(8, state.currentStage + 1),
+    }));
   },
 
   workflowPrev: () => {
-    if (workflowService) workflowService.send({ type: 'PREV' });
+    set((state) => ({
+      currentStage: Math.max(1, state.currentStage - 1),
+    }));
   },
 
   workflowGoto: (stage: number) => {
     const s = Math.max(1, Math.min(8, Math.floor(stage)));
-    if (workflowService) workflowService.send({ type: 'GOTO', value: s });
+    set({ currentStage: s });
   },
   
   setCurrentStage: (stage: number) => set({ currentStage: stage })

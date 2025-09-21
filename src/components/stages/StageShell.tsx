@@ -13,6 +13,7 @@ import {
   validateStageOutput,
   ValidationResult,
 } from '../../utils/validators';
+import { schemaForStage } from '../../utils/schemas';
 
 interface StageShellProps {
   stageId: number;
@@ -53,6 +54,7 @@ export function StageShell({
   const [isEnsuringFeatures, setIsEnsuringFeatures] = useState(false);
   const [evalResult, setEvalResult] = useState<any | null>(null);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [viewMode, setViewMode] = useState('json');
   // Derived busy state
   const isBusy = isGenerating || isEvaluating || isOptimizing || isEnsuringFeatures;
 
@@ -79,6 +81,7 @@ export function StageShell({
      Utility to safely parse strict JSON from LLM text
   -------------------------------------------------- */
   function parseJsonStrict(text: string) {
+    // 1) Fast-path: original behaviour
     try {
       const match =
         text.match(/```json\s*([\s\S]*?)\s*```/i) ||
@@ -87,9 +90,149 @@ export function StageShell({
         return JSON.parse(match[1] ?? match[0]);
       }
     } catch {
-      /* ignore */
+      /* fall through to tolerant path */
     }
-    return null;
+
+    // 2) Tolerant parsing for common LLM artefacts
+    try {
+      // Sanitize the text first
+      let sanitized = text;
+      
+      // Strip ``` fences / backticks
+      sanitized = sanitized.replace(/```(?:json)?/gi, '');
+      
+      // Replace smart quotes with ASCII quotes
+      sanitized = sanitized
+        .replace(/[""«»]/g, '"')
+        .replace(/['']/g, "'");
+      
+      // Trim BOM and whitespace
+      sanitized = sanitized.trim().replace(/^\uFEFF/, '');
+      
+      // Extract the first balanced JSON object
+      const candidate = extractFirstBalancedObject(sanitized);
+      if (!candidate) return null;
+      
+      // Try to parse the candidate
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        // If parsing fails, try removing trailing commas and parse again
+        const withoutTrailingCommas = candidate.replace(/,\s*([}\]])/g, '$1');
+        try {
+          return JSON.parse(withoutTrailingCommas);
+        } catch {
+          /* --------------------------------------------------
+             Last-ditch: escape raw newlines / tabs in strings
+          -------------------------------------------------- */
+          try {
+            const escaped = escapeInvalidStringChars(withoutTrailingCommas);
+            return JSON.parse(escaped);
+          } catch {
+            /* give up */
+          }
+        }
+      }
+    } catch {
+      /* still invalid */
+      return null;
+    }
+  }
+  
+  /* --------------------------------------------------
+     Escape unescaped control chars inside JSON strings
+  -------------------------------------------------- */
+  function escapeInvalidStringChars(json: string): string {
+    let inString = false;
+    let escaped = false;
+    let out = '';
+    for (let i = 0; i < json.length; i++) {
+      const ch = json[i];
+      if (inString) {
+        if (escaped) {
+          // previous was backslash, just emit and reset
+          out += ch;
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\') {
+          out += ch;
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') {
+          inString = false;
+          out += ch;
+          continue;
+        }
+        // replace raw control chars
+        if (ch === '\n') {
+          out += '\\n';
+          continue;
+        }
+        if (ch === '\r') {
+          out += '\\r';
+          continue;
+        }
+        if (ch === '\t') {
+          out += '\\t';
+          continue;
+        } else {
+          out += ch;
+        }
+        continue;
+      } else {
+        if (ch === '"') {
+          inString = true;
+        }
+        out += ch;
+      }
+    }
+    return out;
+  }
+
+  /* --------------------------------------------------
+     Helper to extract the first balanced JSON object
+  -------------------------------------------------- */
+  function extractFirstBalancedObject(text: string): string | null {
+    const firstBrace = text.indexOf('{');
+    if (firstBrace === -1) return null;
+    
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let start = -1;
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      
+      // Handle string state
+      if (char === '"' && !escaped) {
+        inString = !inString;
+      }
+      
+      // Track escape sequences inside strings
+      if (inString) {
+        escaped = char === '\\' && !escaped;
+        continue; // Skip other processing while in a string
+      }
+      
+      // Track depth with braces
+      if (char === '{') {
+        if (depth === 0) {
+          start = i; // Mark the start of the top-level object
+        }
+        depth++;
+      } else if (char === '}') {
+        depth--;
+        // If we've found a balanced object and we're back at depth 0
+        if (depth === 0 && start !== -1) {
+          return text.substring(start, i + 1);
+        }
+      }
+    }
+    
+    return null; // No balanced object found
   }
 
   /* --------------------------------------------------
@@ -126,6 +269,31 @@ ${lastChunk}`;
       return typeof continuation === 'string' ? continuation : '';
     } catch (error) {
       console.error('Continuation error:', error);
+      return '';
+    }
+  }
+
+  /* --------------------------------------------------
+     Helper to coerce arbitrary text -> STRICT JSON
+  -------------------------------------------------- */
+  async function coerceToJson(text: string, budget: number): Promise<string> {
+    const prompt = `You previously produced the following content but it does **not** parse as valid JSON.\n\n---\n${text}\n---\n\nConvert the entire content into STRICT JSON ONLY (no markdown fences, no commentary) that matches the following JSON schema for stage ${stageId}.\n\n${schemaForStage(stageId)}\n\nReturn ONLY the JSON.`;
+
+    try {
+      const result = await (window as any).electronAPI.generateContent(
+        adaptPromptForModel(prompt, llm.selectedModel?.id),
+        {
+          model: llm.selectedModel?.id,
+          temperature: 0.2,
+          maxTokens: budget,
+          unbounded: llm.params.unbounded,
+          inactivityMs: llm.params.inactivityMs,
+          overallMs: llm.params.overallMs,
+        }
+      );
+      return typeof result === 'string' ? result : '';
+    } catch (err) {
+      console.error('Coercion error:', err);
       return '';
     }
   }
@@ -198,24 +366,38 @@ The output must have at least ${min} items in the mvp_features array.`;
       
       if (typeof result === 'string') {
         let aggregate = result;
+        setOutput(aggregate);
         
         // Auto-continue if the JSON is incomplete
         if (isIncompleteJson(aggregate)) {
-          // Try up to 2 continuation passes
-          for (let pass = 0; pass < 2; pass++) {
-            if (!isIncompleteJson(aggregate)) break; // Stop if we have valid JSON
-            
-            const continuation = await continueJson(aggregate, 900);
-            if (!continuation) break; // Stop if continuation failed
-            
+          const continuationBudget = 900;
+          let attempts = 0;
+          const maxAttempts = 5;
+          while (isIncompleteJson(aggregate) && attempts < maxAttempts) {
+            const continuation = await continueJson(aggregate, continuationBudget);
+            if (!continuation) break;
             aggregate += continuation;
-            
-            // If we got valid JSON, stop continuing
-            if (!isIncompleteJson(aggregate)) break;
+            setOutput(aggregate);
+            attempts += 1;
+          }
+          
+          // If still not valid JSON, try a coercion pass
+          if (isIncompleteJson(aggregate)) {
+            const coerced = await coerceToJson(aggregate, 900);
+            if (coerced) {
+              aggregate = coerced;
+              setOutput(aggregate);
+            }
           }
         }
         
-        setOutput(aggregate);
+        // Try to parse and canonicalize
+        const parsed = parseJsonStrict(aggregate);
+        if (parsed) {
+          aggregate = JSON.stringify(parsed, null, 2);
+          setOutput(aggregate);
+        }
+        
         setEvalResult(null);
         
         // Save to database
@@ -270,6 +452,40 @@ The output must have at least ${min} items in the mvp_features array.`;
     }
     const parsed = parseJsonStrict(output);
     if (!parsed) {
+      /* --------------------------------------------------
+         Auto-salvage: try to extract a balanced object,
+         parse it, and re-canonicalize.
+      -------------------------------------------------- */
+      try {
+        // remove any ``` fences first
+        const withoutFences = output.replace(/```(?:json)?/gi, '');
+        const salvagedRaw = extractFirstBalancedObject(withoutFences);
+        if (salvagedRaw) {
+          let salvaged: any = null;
+          try {
+            salvaged = JSON.parse(salvagedRaw);
+          } catch {
+            // retry after stripping trailing commas
+            const cleaned = salvagedRaw.replace(/,\\s*([}\\]])/g, '$1');
+            salvaged = JSON.parse(cleaned);
+          }
+
+          if (salvaged) {
+            // canonicalize & update UI/state
+            const canonical = JSON.stringify(salvaged, null, 2);
+            setOutput(canonical);
+            setValidation(
+              validateStageOutput(stageId, salvaged, {
+                minMVPFeatures: llm.params.minMVPFeatures || 3,
+              })
+            );
+            return; // done
+          }
+        }
+      } catch {
+        /* ignore salvage errors and fall through */
+      }
+      // Fallback: still invalid
       setValidation({ valid: false, issues: ['Output is not valid JSON'] });
       return;
     }
@@ -352,49 +568,70 @@ The output must have at least ${min} items in the mvp_features array.`;
         // Auto-continue if the JSON is incomplete
         if (isIncompleteJson(aggregate)) {
           const continuationBudget = stageId === 1 ? 1500 : stageId === 3 ? 1200 : 800;
-          
-          // Try up to 2 continuation passes
-          for (let pass = 0; pass < 2; pass++) {
-            if (!isIncompleteJson(aggregate)) break; // Stop if we have valid JSON
-            
+          /* -------------------------------------------------------------
+             Persistently request continuation until valid JSON or we hit
+             the maximum number of attempts. This is more resilient than
+             the previous fixed-iteration approach.
+          ------------------------------------------------------------- */
+          let attempts = 0;
+          const maxAttempts = 5;
+          while (isIncompleteJson(aggregate) && attempts < maxAttempts) {
             const continuation = await continueJson(aggregate, continuationBudget);
-            if (!continuation) break; // Stop if continuation failed
-            
+            if (!continuation) break;           // the model returned nothing
             aggregate += continuation;
-            setOutput(aggregate); // Update UI with progress
-            
-            // If we got valid JSON, stop continuing
-            if (!isIncompleteJson(aggregate)) break;
+            setOutput(aggregate);               // Update UI with progress
+            attempts += 1;
+          }
+          
+          // If still not valid JSON, try a coercion pass
+          if (isIncompleteJson(aggregate)) {
+            const coerced = await coerceToJson(aggregate, 900);
+            if (coerced) {
+              aggregate = coerced;
+              setOutput(aggregate);
+            }
           }
         }
         
-        // Try to parse questions from output
+        // Try to parse and canonicalize
+        const parsed = parseJsonStrict(aggregate);
+        if (parsed) {
+          aggregate = JSON.stringify(parsed, null, 2);
+          setOutput(aggregate);
+        }
+
+        /* ---------------------------------------------------------
+           Parse questions using the same tolerant JSON parser
+        --------------------------------------------------------- */
         try {
-          const jsonMatch = aggregate.match(/```json\n([\s\S]*?)\n```/) || 
-                           aggregate.match(/{[\s\S]*}/);
-          
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0].replace(/```json\n|```/g, ''));
-            
+          const parsedForQuestions: any = parseJsonStrict(aggregate);
+          if (parsedForQuestions) {
             // Look for questions in various fields
             const questionKeys = [
-              "questions", "QUESTIONS", "CRITICAL QUESTIONS", 
-              "TECHNICAL QUESTIONS", "USER FLOW QUESTIONS", 
-              "DESIGN QUESTIONS", "SPECIFICATION QUESTIONS", 
-              "DATA QUESTIONS", "PLANNING QUESTIONS"
+              'questions',
+              'QUESTIONS',
+              'CRITICAL QUESTIONS',
+              'TECHNICAL QUESTIONS',
+              'USER FLOW QUESTIONS',
+              'DESIGN QUESTIONS',
+              'SPECIFICATION QUESTIONS',
+              'DATA QUESTIONS',
+              'PLANNING QUESTIONS',
             ];
-            
+
             let extractedQuestions: any[] = [];
             for (const key of questionKeys) {
-              if (parsed[key]) {
-                extractedQuestions = Array.isArray(parsed[key]) 
-                  ? parsed[key] 
-                  : Object.values(parsed[key]);
+              if (parsedForQuestions[key]) {
+                extractedQuestions = Array.isArray(parsedForQuestions[key])
+                  ? parsedForQuestions[key]
+                  : Object.values(parsedForQuestions[key]);
                 break;
               }
             }
-            
+
             setQuestions(extractedQuestions);
+          } else {
+            setQuestions([]);
           }
         } catch (e) {
           console.error('Failed to parse questions:', e);
@@ -511,20 +748,31 @@ The output must have at least ${min} items in the mvp_features array.`;
         // Auto-continue if the JSON is incomplete
         if (isIncompleteJson(improvedAggregate)) {
           const continuationBudget = stageId === 1 ? 1500 : stageId === 3 ? 1200 : 800;
-          
-          // Try up to 2 continuation passes
-          for (let pass = 0; pass < 2; pass++) {
-            if (!isIncompleteJson(improvedAggregate)) break; // Stop if we have valid JSON
-            
+          let attempts = 0;
+          const maxAttempts = 5;
+          while (isIncompleteJson(improvedAggregate) && attempts < maxAttempts) {
             const continuation = await continueJson(improvedAggregate, continuationBudget);
-            if (!continuation) break; // Stop if continuation failed
-            
+            if (!continuation) break;
             improvedAggregate += continuation;
-            setOutput(improvedAggregate); // Update UI with progress
-            
-            // If we got valid JSON, stop continuing
-            if (!isIncompleteJson(improvedAggregate)) break;
+            setOutput(improvedAggregate);
+            attempts += 1;
           }
+          
+          // If still not valid JSON, try a coercion pass
+          if (isIncompleteJson(improvedAggregate)) {
+            const coerced = await coerceToJson(improvedAggregate, 900);
+            if (coerced) {
+              improvedAggregate = coerced;
+              setOutput(improvedAggregate);
+            }
+          }
+        }
+        
+        // Try to parse and canonicalize
+        const parsed = parseJsonStrict(improvedAggregate);
+        if (parsed) {
+          improvedAggregate = JSON.stringify(parsed, null, 2);
+          setOutput(improvedAggregate);
         }
         
         setEvalResult(null);
@@ -672,28 +920,52 @@ The output must have at least ${min} items in the mvp_features array.`;
               Generated {title}
             </h3>
             
-            {!isLatestCycle && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-amber-300 font-medium">
-                  Viewing Cycle {currentCycle} (read-only)
-                </span>
-                <button
-                  onClick={loadIntoCurrentCycle}
-                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  Load into Current Cycle
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewMode(viewMode === 'json' ? 'plaintext' : 'json')}
+                className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-500"
+              >
+                View as {viewMode === 'json' ? 'Plaintext' : 'JSON'}
+              </button>
+              
+              {!isLatestCycle && (
+                <>
+                  <span className="text-sm text-amber-300 font-medium">
+                    Viewing Cycle {currentCycle} (read-only)
+                  </span>
+                  <button
+                    onClick={loadIntoCurrentCycle}
+                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Load into Current Cycle
+                  </button>
+                </>
+              )}
+            </div>
           </div>
           
-          <Editor
-            value={output}
-            onChange={setOutput}
-            language={editorLanguage}
-            height={editorHeight}
-            readOnly={!isLatestCycle}
-          />
+          {viewMode === 'json' ? (
+            <Editor
+              value={output}
+              onChange={setOutput}
+              language={editorLanguage}
+              height={editorHeight}
+              readOnly={!isLatestCycle}
+            />
+          ) : (
+            <div className="bg-gray-800 rounded p-4 overflow-auto" style={{ height: editorHeight }}>
+              {/* Pretty-print the JSON for easy reading; fall back to raw text on parse errors */}
+              <pre className="text-white whitespace-pre-wrap">
+                {(() => {
+                  try {
+                    return JSON.stringify(JSON.parse(output), null, 2);
+                  } catch {
+                    return output;
+                  }
+                })()}
+              </pre>
+            </div>
+          )}
           
           {/* Validation Status Panel */}
           {validation && (
@@ -797,9 +1069,11 @@ The output must have at least ${min} items in the mvp_features array.`;
           {isLatestCycle && (
             <button
               onClick={() => acceptStage(stageId, output)}
-              disabled={accepted || !isLatestCycle || validation?.valid === false}
+              disabled={
+                accepted || !output || validation?.valid === false
+              }
               className={`px-6 py-2 rounded-md ${
-                accepted || !isLatestCycle || validation?.valid === false
+                accepted || !output || validation?.valid === false
                   ? 'bg-green-800 text-white cursor-not-allowed'
                   : 'bg-green-600 text-white hover:bg-green-700'
               }`}

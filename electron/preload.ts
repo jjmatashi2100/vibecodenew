@@ -59,6 +59,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.send('llm:cancel', lastChannel);
     }
   },
+
+  /* -------------------- Secrets / API keys -------------------- */
+  secretsStatus: () => ipcRenderer.invoke('secrets:status'),
+  secretsSet: (payload: { openai?: string | null; anthropic?: string | null; gemini?: string | null }) =>
+    ipcRenderer.invoke('secrets:set', payload),
+  secretsGet: (provider: 'openai' | 'anthropic' | 'gemini') =>
+    ipcRenderer.invoke('secrets:get', provider),
 });
 
 // Tracks the most-recent LLM stream channel so we can request cancellation

@@ -68,7 +68,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   llm: {
     providers: [
       { name: 'ollama',   endpoint: 'http://localhost:11434', isActive: false },
-      { name: 'lmstudio', endpoint: 'http://localhost:1234',  isActive: false }
+      { name: 'lmstudio', endpoint: 'http://localhost:1234',  isActive: false },
+
+      // --- Cloud-based providers (keys expected via env vars / settings) ---
+      { name: 'openai',    endpoint: 'https://api.openai.com',                           isActive: false },
+      { name: 'anthropic', endpoint: 'https://api.anthropic.com',                        isActive: false },
+      { name: 'gemini',    endpoint: 'https://generativelanguage.googleapis.com',        isActive: false }
     ],
     availableModels: [],
     selectedModel: null,
