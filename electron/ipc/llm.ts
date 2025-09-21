@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron';
+import { getApiKey } from './secrets';
 
 /* ------------------------------------------------------------------
    Helper to enforce both an overall timeout and an inactivity timeout
@@ -26,20 +27,16 @@ function createAbortGuards(inactivityMs = 120_000, overallMs = 240_000, external
   return { signal: controller.signal, startInactivity, clear };
 }
 
+/* -------------------------------------------------------------
+   Common provider interface – concrete classes implement this.
+------------------------------------------------------------- */
 interface LLMProvider {
   name: string;
   endpoint: string;
-  check(): Promise<boolean>; 
+  check(): Promise<boolean>;
   generate(prompt: string, options: any): AsyncGenerator<string, void, unknown>;
   getModels(): Promise<string[]>;
 }
-
-/* ------------------------------------------------------------------
-   Cloud providers require API keys – read once from process.env.
--------------------------------------------------------------------*/
-const OPENAI_KEY      = process.env.OPENAI_API_KEY      ?? '';
-const ANTHROPIC_KEY   = process.env.ANTHROPIC_API_KEY   ?? '';
-const GEMINI_KEY      = process.env.GEMINI_API_KEY      ?? '';
 
 /* ------------------------------------------------------------------
    Shared tiny helper to stream server-sent-events JSON lines.
@@ -85,10 +82,11 @@ class OpenAIProvider implements LLMProvider {
   endpoint = 'https://api.openai.com';
 
   async check(): Promise<boolean> {
-    if (!OPENAI_KEY) return false;
+    const apiKey = await getApiKey('openai');
+    if (!apiKey) return false;
     try {
       const r = await fetch(`${this.endpoint}/v1/models`, {
-        headers: { Authorization: `Bearer ${OPENAI_KEY}` }
+        headers: { Authorization: `Bearer ${apiKey}` }
       });
       return r.ok;
     } catch {
@@ -97,13 +95,15 @@ class OpenAIProvider implements LLMProvider {
   }
 
   async *generate(prompt: string, options: any = {}): AsyncGenerator<string> {
+    const apiKey = await getApiKey('openai');
+    if (!apiKey) throw new Error('Missing OpenAI API key');
     const guards = createAbortGuards(options.inactivityMs, options.overallMs, options.abortController);
     try {
       const res = await fetch(`${this.endpoint}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${OPENAI_KEY}`
+          Authorization: `Bearer ${apiKey}`
         },
         signal: guards.signal,
         body: JSON.stringify({
@@ -128,10 +128,11 @@ class OpenAIProvider implements LLMProvider {
   }
 
   async getModels(): Promise<string[]> {
-    if (!OPENAI_KEY) return [];
+    const apiKey = await getApiKey('openai');
+    if (!apiKey) return [];
     try {
       const r = await fetch(`${this.endpoint}/v1/models`, {
-        headers: { Authorization: `Bearer ${OPENAI_KEY}` }
+        headers: { Authorization: `Bearer ${apiKey}` }
       });
       const d: any = await r.json();
       return (d.data ?? []).map((m: any) => m.id).filter((id: string) =>
@@ -151,10 +152,12 @@ class AnthropicProvider implements LLMProvider {
   endpoint = 'https://api.anthropic.com';
 
   async check(): Promise<boolean> {
-    return Boolean(ANTHROPIC_KEY); // minimal – full call costs quota
+    return Boolean(await getApiKey('anthropic')); // minimal – full call costs quota
   }
 
   async *generate(prompt: string, options: any = {}): AsyncGenerator<string> {
+    const apiKey = await getApiKey('anthropic');
+    if (!apiKey) throw new Error('Missing Anthropic API key');
     const guards = createAbortGuards(options.inactivityMs, options.overallMs, options.abortController);
     try {
       const res = await fetch(`${this.endpoint}/v1/messages`, {
@@ -162,7 +165,7 @@ class AnthropicProvider implements LLMProvider {
         headers: {
           'Content-Type': 'application/json',
           'anthropic-version': '2023-06-01',
-          'x-api-key': ANTHROPIC_KEY
+          'x-api-key': apiKey
         },
         signal: guards.signal,
         body: JSON.stringify({
@@ -207,12 +210,14 @@ class GeminiProvider implements LLMProvider {
   endpoint = 'https://generativelanguage.googleapis.com/v1beta';
 
   async check(): Promise<boolean> {
-    return Boolean(GEMINI_KEY);
+    return Boolean(await getApiKey('gemini'));
   }
 
   async *generate(prompt: string, options: any = {}): AsyncGenerator<string> {
     const model = options.model || 'gemini-1.5-flash-latest';
-    const url = `${this.endpoint}/models/${model}:generateContent?key=${GEMINI_KEY}`;
+    const apiKey = await getApiKey('gemini');
+    if (!apiKey) throw new Error('Missing Gemini API key');
+    const url = `${this.endpoint}/models/${model}:generateContent?key=${apiKey}`;
     try {
       const res = await fetch(url, {
         method: 'POST',
