@@ -13,6 +13,7 @@ import {
   getActiveLLMConfig
 } from './ipc/database';
 import { setupLLMHandlers } from './ipc/llm';
+import { setupSecretHandlers } from './ipc/secrets';
 import { createApplicationMenu } from './utils/menu';
 
 let mainWindow: BrowserWindow | null = null;
@@ -124,6 +125,7 @@ if (!gotTheLock) {
     }
 
     setupIPCHandlers();
+    setupSecretHandlers(); // expose secure API-key management handlers
     setupLLMHandlers();
   });
 }
