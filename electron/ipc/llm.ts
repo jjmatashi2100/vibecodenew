@@ -34,6 +34,212 @@ interface LLMProvider {
   getModels(): Promise<string[]>;
 }
 
+/* ------------------------------------------------------------------
+   Cloud providers require API keys – read once from process.env.
+-------------------------------------------------------------------*/
+const OPENAI_KEY      = process.env.OPENAI_API_KEY      ?? '';
+const ANTHROPIC_KEY   = process.env.ANTHROPIC_API_KEY   ?? '';
+const GEMINI_KEY      = process.env.GEMINI_API_KEY      ?? '';
+
+/* ------------------------------------------------------------------
+   Shared tiny helper to stream server-sent-events JSON lines.
+-------------------------------------------------------------------*/
+async function* streamSSE(
+  res: Response,
+  guards: ReturnType<typeof createAbortGuards>,
+  extract: (json: any) => string | undefined
+): AsyncGenerator<string, void, unknown> {
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('No response body');
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    guards.startInactivity();
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') return;
+      try {
+        const json = JSON.parse(data);
+        const part = extract(json);
+        if (part) yield part;
+      } catch {
+        /* ignore parse errors */
+      }
+    }
+  }
+}
+
+/* ==================================================================
+   OpenAI (chat/stream)
+===================================================================*/
+class OpenAIProvider implements LLMProvider {
+  name = 'OpenAI';
+  endpoint = 'https://api.openai.com';
+
+  async check(): Promise<boolean> {
+    if (!OPENAI_KEY) return false;
+    try {
+      const r = await fetch(`${this.endpoint}/v1/models`, {
+        headers: { Authorization: `Bearer ${OPENAI_KEY}` }
+      });
+      return r.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async *generate(prompt: string, options: any = {}): AsyncGenerator<string> {
+    const guards = createAbortGuards(options.inactivityMs, options.overallMs, options.abortController);
+    try {
+      const res = await fetch(`${this.endpoint}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPENAI_KEY}`
+        },
+        signal: guards.signal,
+        body: JSON.stringify({
+          model: options.model || 'gpt-3.5-turbo',
+          stream: true,
+          temperature: options.temperature ?? 0.3,
+          max_tokens: options.unbounded ? undefined : options.maxTokens ?? 700,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      if (!res.ok) throw new Error(`OpenAI error: ${res.status}`);
+
+      for await (const chunk of streamSSE(res, guards, (j) => j.choices?.[0]?.delta?.content)) {
+        yield chunk;
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('LLM stream stalled (no data for 120 s)');
+      throw err;
+    } finally {
+      guards.clear();
+    }
+  }
+
+  async getModels(): Promise<string[]> {
+    if (!OPENAI_KEY) return [];
+    try {
+      const r = await fetch(`${this.endpoint}/v1/models`, {
+        headers: { Authorization: `Bearer ${OPENAI_KEY}` }
+      });
+      const d: any = await r.json();
+      return (d.data ?? []).map((m: any) => m.id).filter((id: string) =>
+        ['gpt-4', 'gpt-4o', 'gpt-3.5'].some(k => id.includes(k))
+      );
+    } catch {
+      return [];
+    }
+  }
+}
+
+/* ==================================================================
+   Anthropic Claude-3
+===================================================================*/
+class AnthropicProvider implements LLMProvider {
+  name = 'Anthropic';
+  endpoint = 'https://api.anthropic.com';
+
+  async check(): Promise<boolean> {
+    return Boolean(ANTHROPIC_KEY); // minimal – full call costs quota
+  }
+
+  async *generate(prompt: string, options: any = {}): AsyncGenerator<string> {
+    const guards = createAbortGuards(options.inactivityMs, options.overallMs, options.abortController);
+    try {
+      const res = await fetch(`${this.endpoint}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+          'x-api-key': ANTHROPIC_KEY
+        },
+        signal: guards.signal,
+        body: JSON.stringify({
+          model: options.model || 'claude-3-sonnet-20240229',
+          max_tokens: options.unbounded ? 4096 : options.maxTokens ?? 700,
+          temperature: options.temperature ?? 0.3,
+          stream: true,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      if (!res.ok) throw new Error(`Anthropic error: ${res.status}`);
+
+      for await (const chunk of streamSSE(res, guards, (j) => {
+        if (j.type === 'content_block_delta') return j.delta?.text;
+        if (j.type === 'message_delta') return j.delta?.content?.[0]?.text;
+        return undefined;
+      })) {
+        yield chunk;
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('LLM stream stalled (no data for 120 s)');
+      throw err;
+    } finally {
+      guards.clear();
+    }
+  }
+
+  async getModels(): Promise<string[]> {
+    return [
+      'claude-3-opus-20240229',
+      'claude-3-sonnet-20240229',
+      'claude-3-haiku-20240307'
+    ];
+  }
+}
+
+/* ==================================================================
+   Google Gemini – non-streaming simple call
+===================================================================*/
+class GeminiProvider implements LLMProvider {
+  name = 'Gemini';
+  endpoint = 'https://generativelanguage.googleapis.com/v1beta';
+
+  async check(): Promise<boolean> {
+    return Boolean(GEMINI_KEY);
+  }
+
+  async *generate(prompt: string, options: any = {}): AsyncGenerator<string> {
+    const model = options.model || 'gemini-1.5-flash-latest';
+    const url = `${this.endpoint}/models/${model}:generateContent?key=${GEMINI_KEY}`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }]}],
+          generationConfig: {
+            temperature: options.temperature ?? 0.3,
+            maxOutputTokens: options.unbounded ? 2048 : options.maxTokens ?? 700,
+            topP: options.topP ?? 0.9
+          }
+        })
+      });
+      if (!res.ok) throw new Error(`Gemini error: ${res.status}`);
+      const d: any = await res.json();
+      const text = d.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      if (text) yield text;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getModels(): Promise<string[]> {
+    return ['gemini-1.5-flash-latest', 'gemini-1.5-pro-latest'];
+  }
+}
+
 class OllamaProvider implements LLMProvider {
   name = 'Ollama';
   endpoint = 'http://localhost:11434';
@@ -243,6 +449,9 @@ class LLMManager {
   constructor() { 
     this.providers.set('ollama', new OllamaProvider()); 
     this.providers.set('lmstudio', new LMStudioProvider()); 
+    this.providers.set('openai', new OpenAIProvider());
+    this.providers.set('anthropic', new AnthropicProvider());
+    this.providers.set('gemini', new GeminiProvider());
   }
 
   public getProviderNames(): string[] {
@@ -284,6 +493,25 @@ class LLMManager {
     if (await lms.check()) { 
       this.active = lms; 
       return { provider: 'lmstudio', models: await lms.getModels() }; 
+    }
+
+    /* -------------------------- Web providers -------------------------- */
+    const openai = this.providers.get('openai')!;
+    if (await openai.check()) {
+      this.active = openai;
+      return { provider: 'openai', models: await openai.getModels() };
+    }
+
+    const anthropic = this.providers.get('anthropic')!;
+    if (await anthropic.check()) {
+      this.active = anthropic;
+      return { provider: 'anthropic', models: await anthropic.getModels() };
+    }
+
+    const gem = this.providers.get('gemini')!;
+    if (await gem.check()) {
+      this.active = gem;
+      return { provider: 'gemini', models: await gem.getModels() };
     }
     
     return null;

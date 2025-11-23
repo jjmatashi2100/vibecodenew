@@ -13,6 +13,7 @@ import {
   validateStageOutput,
   ValidationResult,
 } from '../../utils/validators';
+import { schemaForStage } from '../../utils/schemas';
 
 interface StageShellProps {
   stageId: number;
@@ -130,6 +131,31 @@ ${lastChunk}`;
     }
   }
 
+  /* --------------------------------------------------
+     Helper to coerce arbitrary text -> STRICT JSON
+  -------------------------------------------------- */
+  async function coerceToJson(text: string, budget: number): Promise<string> {
+    const prompt = `You previously produced the following content but it does **not** parse as valid JSON.\n\n---\n${text}\n---\n\nConvert the entire content into STRICT JSON ONLY (no markdown fences, no commentary) that matches the following JSON schema for stage ${stageId}.\n\n${schemaForStage(stageId)}\n\nReturn ONLY the JSON.`;
+
+    try {
+      const result = await (window as any).electronAPI.generateContent(
+        adaptPromptForModel(prompt, llm.selectedModel?.id),
+        {
+          model: llm.selectedModel?.id,
+          temperature: 0.2,
+          maxTokens: budget,
+          unbounded: llm.params.unbounded,
+          inactivityMs: llm.params.inactivityMs,
+          overallMs: llm.params.overallMs,
+        }
+      );
+      return typeof result === 'string' ? result : '';
+    } catch (err) {
+      console.error('Coercion error:', err);
+      return '';
+    }
+  }
+
   /* ------------------------------------------------------------------
      Load content from a past cycle into the current one
   -------------------------------------------------------------------*/
@@ -206,6 +232,15 @@ The output must have at least ${min} items in the mvp_features array.`;
             if (!isIncompleteJson(aggregate)) break; // Stop if we have valid JSON
             
             const continuation = await continueJson(aggregate, 900);
+
+        // If still not valid JSON, try a coercion pass
+        if (isIncompleteJson(aggregate)) {
+          const coerced = await coerceToJson(aggregate, 900);
+          if (coerced) {
+            aggregate = coerced;
+            setOutput(aggregate);
+          }
+        }
             if (!continuation) break; // Stop if continuation failed
             
             aggregate += continuation;
@@ -358,8 +393,16 @@ The output must have at least ${min} items in the mvp_features array.`;
             if (!isIncompleteJson(aggregate)) break; // Stop if we have valid JSON
             
             const continuation = await continueJson(aggregate, continuationBudget);
+
+        // If still not valid JSON, try a coercion pass
+        if (isIncompleteJson(aggregate)) {
+          const coerced = await coerceToJson(aggregate, 900);
+          if (coerced) {
+            aggregate = coerced;
+          }
+        }
             if (!continuation) break; // Stop if continuation failed
-            
+        setOutput(aggregate);
             aggregate += continuation;
             setOutput(aggregate); // Update UI with progress
             
@@ -517,6 +560,15 @@ The output must have at least ${min} items in the mvp_features array.`;
             if (!isIncompleteJson(improvedAggregate)) break; // Stop if we have valid JSON
             
             const continuation = await continueJson(improvedAggregate, continuationBudget);
+
+        // If still not valid JSON, try a coercion pass
+        if (isIncompleteJson(improvedAggregate)) {
+          const coerced = await coerceToJson(improvedAggregate, 900);
+          if (coerced) {
+            improvedAggregate = coerced;
+            setOutput(improvedAggregate);
+          }
+        }
             if (!continuation) break; // Stop if continuation failed
             
             improvedAggregate += continuation;
