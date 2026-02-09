@@ -56,7 +56,11 @@ if (!gotTheLock) {
     Menu.setApplicationMenu(createApplicationMenu(mainWindow));
 
     if (process.env.NODE_ENV === 'development') {
-      mainWindow.loadURL('http://localhost:3000');
+      // Prefer IPv4 loopback to avoid IPv6 ↔ IPv4 “connection refused” issues.
+      // Allow overriding via VITE_DEV_SERVER_URL for flexibility (e.g. custom port).
+      const devUrl =
+        process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:3000';
+      mainWindow.loadURL(devUrl);
       mainWindow.webContents.openDevTools();
     } else {
       // In production, resolve the renderer HTML relative to the compiled
